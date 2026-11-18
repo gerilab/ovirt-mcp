@@ -37,6 +37,8 @@ from .host import (
     HostPowerManagement,
     HostStats,
     HostSummary,
+    HostUpgradeCheckResult,
+    HostUpgradeResult,
 )
 from .host_network import (
     HostBondResult,
@@ -134,6 +136,8 @@ __all__ = [
     "HostPowerManagement",
     "HostStats",
     "HostSummary",
+    "HostUpgradeCheckResult",
+    "HostUpgradeResult",
     "IsoFileInfo",
     "LogicalNetworkResult",
     "LogicalNetworkSummary",

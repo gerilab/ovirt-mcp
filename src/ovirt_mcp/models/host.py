@@ -29,6 +29,9 @@ class HostSummary(BaseModel):
     cpu_cores: int = Field(default=1, description="Total physical CPU cores")
     cpu_sockets: int = Field(default=1, description="Physical CPU sockets count")
     total_memory_gb: float = Field(default=0.0, description="Total physical RAM in GB")
+    update_available: bool | None = Field(
+        default=None, description="Whether OS or package updates are available for this host"
+    )
 
 
 class HostHardwareInfo(BaseModel):
@@ -104,6 +107,9 @@ class HostDetail(BaseModel):
     )
     nics_count: int = Field(default=0, description="Physical network interfaces count")
     numa_nodes_count: int = Field(default=0, description="NUMA architecture nodes count")
+    update_available: bool | None = Field(
+        default=None, description="Whether OS or package updates are available for this host"
+    )
 
 
 class HostStats(BaseModel):
@@ -197,3 +203,30 @@ class HostLifecycleResult(BaseModel):
     current_status: str = Field(description="Status of the host after initiation or completion")
     active_vms_count: int = Field(default=0, description="Virtual machines remaining on the host")
     message: str = Field(description="Human-readable summary of outcome and safety checks")
+
+
+class HostUpgradeCheckResult(BaseModel):
+    """Result of checking for host software and OS upgrades."""
+
+    success: bool = Field(description="Whether the upgrade check was initiated or completed")
+    host_id: str = Field(description="UUID of the hypervisor host")
+    host_name: str = Field(description="Display name / FQDN of the host")
+    status: str = Field(description="Current operational status of the host")
+    update_available: bool = Field(
+        description="Whether OS/package updates are available for this host"
+    )
+    message: str = Field(description="Human-readable outcome description")
+
+
+class HostUpgradeResult(BaseModel):
+    """Result of initiating an OS and package upgrade on a hypervisor host."""
+
+    success: bool = Field(description="Whether the host upgrade was initiated")
+    action: str = Field(default="upgrade", description="Executed action ('upgrade')")
+    host_id: str = Field(description="UUID of the hypervisor host")
+    host_name: str = Field(description="Display name / FQDN of the host")
+    status: str = Field(description="Status of the host ('maintenance', etc.)")
+    reboot_requested: bool = Field(
+        default=True, description="Whether host reboot was requested after upgrade"
+    )
+    message: str = Field(description="Human-readable outcome and upgrade instructions")

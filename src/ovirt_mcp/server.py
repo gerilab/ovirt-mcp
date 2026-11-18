@@ -42,6 +42,8 @@ from ovirt_mcp.models.host import (
     HostNumaNodeInfo,
     HostStats,
     HostSummary,
+    HostUpgradeCheckResult,
+    HostUpgradeResult,
 )
 from ovirt_mcp.models.host_network import (
     HostBondResult,
@@ -178,6 +180,8 @@ from ovirt_mcp.tools.hosts import (
     list_hosts_tool,
     maintenance_host_tool,
     restart_host_tool,
+    upgrade_check_host_tool,
+    upgrade_host_tool,
 )
 from ovirt_mcp.tools.hosts_network import (
     ovirt_host_iscsi_discover as discover_host_iscsi_tool,
@@ -1346,6 +1350,45 @@ def ovirt_host_restart(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+    )
+
+
+@mcp.tool(
+    name="ovirt_host_upgrade_check",
+    description=(
+        "Check if operating system or package updates are available for a hypervisor host. "
+        "Triggers the engine to query host package repositories via Ansible runner and "
+        "returns whether updates are available (update_available)."
+    ),
+)
+def ovirt_host_upgrade_check(name_or_id: str) -> HostUpgradeCheckResult:
+    """Check for operating system or package updates on a hypervisor host."""
+    return upgrade_check_host_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_host_upgrade",
+    description=(
+        "Upgrade operating system packages and VDSM on a hypervisor host via Engine Ansible automation. "
+        "Strict Safety Guard: The host MUST be in 'maintenance' mode before initiating an upgrade. "
+        "Active VMs must be migrated away using 'ovirt_host_maintenance'. "
+        "Protected action in Safe Mode: requires confirm=True when MCP_SAFE_MODE=true."
+    ),
+)
+def ovirt_host_upgrade(
+    name_or_id: str,
+    reboot: bool = True,
+    confirm: bool = False,
+    async_: bool = True,
+    timeout_minutes: int = 60,
+) -> HostUpgradeResult:
+    """Upgrade operating system packages and VDSM on a hypervisor host."""
+    return upgrade_host_tool(
+        name_or_id=name_or_id,
+        reboot=reboot,
+        confirm=confirm,
+        async_=async_,
+        timeout_minutes=timeout_minutes,
     )
 
 

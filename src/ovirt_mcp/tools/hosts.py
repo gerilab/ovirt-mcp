@@ -24,6 +24,8 @@ from ovirt_mcp.models.host import (
     HostPowerManagement,
     HostStats,
     HostSummary,
+    HostUpgradeCheckResult,
+    HostUpgradeResult,
 )
 from ovirt_mcp.tools.guards import audit_log, require_destructive_confirmation
 
@@ -176,6 +178,11 @@ def list_hosts_tool(
                 cpu_cores=cores,
                 cpu_sockets=sockets,
                 total_memory_gb=total_mem_gb,
+                update_available=(
+                    bool(getattr(h, "update_available", False))
+                    if getattr(h, "update_available", None) is not None
+                    else None
+                ),
             )
         )
 
@@ -317,6 +324,11 @@ def get_host_tool(name_or_id: str) -> HostDetail:
         power_management=power_mgmt,
         nics_count=nics_count,
         numa_nodes_count=numa_count,
+        update_available=(
+            bool(getattr(host, "update_available", False))
+            if getattr(host, "update_available", None) is not None
+            else None
+        ),
     )
 
 
@@ -764,6 +776,160 @@ def restart_host_tool(
         current_status=curr_status,
         active_vms_count=0,
         message=f"Host '{h_name}' restart initiated via power management fencing (status: {curr_status}).",
+    )
+
+
+def upgrade_check_host_tool(name_or_id: str) -> HostUpgradeCheckResult:
+    """Check if operating system or package updates are available for a hypervisor host.
+
+    Triggers the engine to query host package repositories via Ansible runner and
+    updates the host's update_available state.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+
+    Returns:
+        HostUpgradeCheckResult indicating update availability and host status.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(host.name)
+    host_service = hosts_service.host_service(host_id)
+
+    status_obj = getattr(host, "status", None)
+    status_str = str(getattr(status_obj, "value", status_obj or "unknown")).lower()
+
+    if status_str not in ("up", "non_operational"):
+        raise OvirtValidationError(
+            f"Cannot check for upgrades on host '{host_name}': Current status is '{status_str}'. "
+            "Valid host statuses for upgrade check are 'up' or 'non_operational'.",
+            details={"host_id": host_id, "host_name": host_name, "status": status_str},
+        )
+
+    try:
+        host_service.upgrade_check()
+    except Exception as exc:
+        raise OvirtMCPError(
+            f"Failed to check for upgrades on host '{host_name}': {exc}",
+            details={"host_id": host_id, "host_name": host_name, "error": str(exc)},
+        ) from exc
+
+    # Refresh host to read latest update_available flag
+    try:
+        refreshed = host_service.get()
+        upd_avail = bool(getattr(refreshed, "update_available", False))
+    except Exception:
+        upd_avail = bool(getattr(host, "update_available", False))
+
+    msg = f"Host '{host_name}' upgrade check initiated. " + (
+        "Package/OS updates are available." if upd_avail else "No updates currently available."
+    )
+
+    return HostUpgradeCheckResult(
+        success=True,
+        host_id=host_id,
+        host_name=host_name,
+        status=status_str,
+        update_available=upd_avail,
+        message=msg,
+    )
+
+
+def upgrade_host_tool(
+    name_or_id: str,
+    reboot: bool = True,
+    confirm: bool = False,
+    async_: bool = True,
+    timeout_minutes: int = 60,
+) -> HostUpgradeResult:
+    """Upgrade operating system packages and VDSM on a hypervisor host.
+
+    Executes the oVirt / OLVM host upgrade Ansible automation playbook.
+    Safety Guard: The host MUST be in 'maintenance' state before initiating an upgrade.
+    Destructive/modifying action in Safe Mode: requires confirm=True when MCP_SAFE_MODE=true.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+        reboot: Whether to automatically reboot the host after the upgrade completes (default: True).
+        confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
+        async_: Whether to execute the upgrade asynchronously (default: True).
+        timeout_minutes: Maximum duration in minutes for the upgrade playbook execution (default: 60).
+
+    Returns:
+        HostUpgradeResult with upgrade execution details.
+    """
+    require_destructive_confirmation(
+        f"upgrade host '{name_or_id}' (reboot={reboot})", confirmed=confirm
+    )
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(host.name)
+    host_service = hosts_service.host_service(host_id)
+
+    status_obj = getattr(host, "status", None)
+    status_str = str(getattr(status_obj, "value", status_obj or "unknown")).lower()
+
+    if status_str != "maintenance":
+        raise OvirtValidationError(
+            f"Cannot upgrade host '{host_name}': Current status is '{status_str}'. "
+            "oVirt / OLVM requires the hypervisor host to be in 'maintenance' mode "
+            "before initiating an upgrade. Please migrate active VMs and place the host into maintenance "
+            "using 'ovirt_host_maintenance' first.",
+            details={
+                "host_id": host_id,
+                "host_name": host_name,
+                "current_status": status_str,
+                "required_status": "maintenance",
+            },
+        )
+
+    try:
+        host_service.upgrade(
+            reboot=reboot,
+            async_=async_,
+            timeout=timeout_minutes,
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_upgrade",
+            host_name,
+            {"host_id": host_id, "reboot": reboot, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to initiate upgrade on host '{host_name}': {exc}",
+            details={"host_id": host_id, "host_name": host_name, "error": str(exc)},
+        ) from exc
+
+    audit_log(
+        "ovirt_host_upgrade",
+        host_name,
+        {"host_id": host_id, "reboot": reboot, "async": async_},
+        "SUCCESS",
+    )
+
+    msg = (
+        f"Host '{host_name}' upgrade initiated successfully via Engine Ansible runner. "
+        f"Post-upgrade automatic reboot: {'enabled' if reboot else 'disabled'}."
+    )
+
+    return HostUpgradeResult(
+        success=True,
+        action="upgrade",
+        host_id=host_id,
+        host_name=host_name,
+        status=status_str,
+        reboot_requested=reboot,
+        message=msg,
     )
 
 

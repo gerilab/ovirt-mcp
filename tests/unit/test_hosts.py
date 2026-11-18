@@ -18,6 +18,8 @@ from ovirt_mcp.models.host import (
     HostNumaNodeInfo,
     HostStats,
     HostSummary,
+    HostUpgradeCheckResult,
+    HostUpgradeResult,
 )
 from ovirt_mcp.tools.hosts import (
     activate_host_tool,
@@ -31,6 +33,8 @@ from ovirt_mcp.tools.hosts import (
     list_hosts_tool,
     maintenance_host_tool,
     restart_host_tool,
+    upgrade_check_host_tool,
+    upgrade_host_tool,
 )
 
 
@@ -60,6 +64,7 @@ def _setup_mock_host(
     mock_cluster.id = "cluster-uuid-1"
     mock_host.cluster = mock_cluster
     mock_host.address = "192.0.2.12"
+    mock_host.update_available = True
 
     hw_info = MagicMock()
     hw_info.manufacturer = "VMware, Inc." if is_vmware else "Dell Inc."
@@ -121,6 +126,7 @@ def test_list_hosts_success() -> None:
     assert h.is_nested is True
     assert h.total_memory_gb == 32.0
     assert h.active_vms_count == 0
+    assert h.update_available is True
 
 
 def test_get_host_detail_success() -> None:
@@ -138,6 +144,7 @@ def test_get_host_detail_success() -> None:
     assert detail.numa_nodes_count == 1
     assert detail.hardware.manufacturer == "VMware, Inc."
     assert detail.power_management.enabled is False
+    assert detail.update_available is True
 
 
 # ── HOST STATS TESTS ──────────────────────────────────────────────────────────
@@ -385,6 +392,85 @@ def test_restart_host_success(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_host_service.fence.assert_called_once()
     assert res.success is True
     assert res.action == "restart"
+
+
+# ── HOST UPGRADE TESTS ────────────────────────────────────────────────────────
+
+
+def test_upgrade_check_host_success() -> None:
+    mock_client, mock_host_service, _ = _setup_mock_host(status_str="up")
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = upgrade_check_host_tool("olvmhost002.example.com")
+
+    mock_host_service.upgrade_check.assert_called_once()
+    assert isinstance(res, HostUpgradeCheckResult)
+    assert res.success is True
+    assert res.host_name == "olvmhost002.example.com"
+    assert res.update_available is True
+    assert "updates are available" in res.message
+
+
+def test_upgrade_check_host_invalid_status_rejected() -> None:
+    mock_client, _, _ = _setup_mock_host(status_str="installing")
+
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError) as exc_info,
+    ):
+        upgrade_check_host_tool("olvmhost002.example.com")
+
+    assert "Valid host statuses for upgrade check are 'up' or 'non_operational'" in str(
+        exc_info.value
+    )
+
+
+def test_upgrade_host_safe_mode_unconfirmed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    with pytest.raises(OvirtValidationError) as exc_info:
+        upgrade_host_tool("olvmhost002.example.com", confirm=False)
+    assert "confirm=True" in str(exc_info.value)
+
+
+def test_upgrade_host_not_in_maintenance_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=False),
+    )
+    mock_client, _, _ = _setup_mock_host(status_str="up")
+
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError) as exc_info,
+    ):
+        upgrade_host_tool("olvmhost002.example.com", confirm=True)
+
+    assert "requires the hypervisor host to be in 'maintenance' mode" in str(exc_info.value)
+
+
+def test_upgrade_host_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_host_service, _ = _setup_mock_host(status_str="maintenance")
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = upgrade_host_tool("olvmhost002.example.com", reboot=True, confirm=True, async_=True)
+
+    mock_host_service.upgrade.assert_called_once_with(
+        reboot=True,
+        async_=True,
+        timeout=60,
+    )
+    assert isinstance(res, HostUpgradeResult)
+    assert res.success is True
+    assert res.action == "upgrade"
+    assert res.reboot_requested is True
+    assert "upgrade initiated successfully" in res.message
 
 
 # ── NICS, NUMA, DEVICES, EVENTS TESTS ─────────────────────────────────────────

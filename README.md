@@ -123,6 +123,8 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
    - [`ovirt_user_tag_list`](#100-ovirt_user_tag_list)
    - [`ovirt_user_tag_assign`](#101-ovirt_user_tag_assign)
    - [`ovirt_user_tag_unassign`](#102-ovirt_user_tag_unassign)
+   - [`ovirt_host_upgrade_check`](#103-ovirt_host_upgrade_check)
+   - [`ovirt_host_upgrade`](#104-ovirt_host_upgrade)
 7. [Connecting to AI MCP Clients](#connecting-to-ai-mcp-clients)
 8. [Testing & Quality Verification](#testing--quality-verification)
 9. [Troubleshooting & FAQ](#troubleshooting--faq)
@@ -333,7 +335,7 @@ ovirt_<domain>_[<subresource>_]<action>
 
 - **`ovirt_vm_*`**: All operations affecting virtual machines (lifecycle, snapshots, disks, media/ISO, migration, guest agent).
   - e.g. `ovirt_vm_list`, `ovirt_vm_start`, `ovirt_vm_stop`, `ovirt_vm_snapshot_create`, `ovirt_vm_disk_attach`, `ovirt_vm_migrate`.
-- **`ovirt_host_*`**: Hypervisor host operations (`list`, `get`, `activate`, `maintenance`, `restart`, `stats`, `nic_list`, `numa_list`, `device_list`, `storage_list`, `events`).
+- **`ovirt_host_*`**: Hypervisor host operations (`list`, `get`, `activate`, `maintenance`, `restart`, `stats`, `upgrade_check`, `upgrade`, `nic_list`, `numa_list`, `device_list`, `storage_list`, `events`).
 - **`ovirt_cluster_*`**: Cluster topology, compatibility versions, and CPU profiles.
 - **`ovirt_storage_*`**: Storage domains and capacity management.
 - **`ovirt_disk_*`**: Standalone floating disks and volume operations.
@@ -1228,6 +1230,7 @@ Lists all hypervisor hosts in the virtualization environment across clusters. Re
   - `cpu_cores`: Physical core count.
   - `cpu_sockets`: Physical socket count.
   - `total_memory_gb`: Total physical RAM in gigabytes.
+  - `update_available`: Boolean indicating whether OS or package updates are available for the host.
 
 **Example Output:**
 ```json
@@ -1245,7 +1248,8 @@ Lists all hypervisor hosts in the virtualization environment across clusters. Re
     "cpu_model": "AMD Ryzen 5 3600 6-Core Processor",
     "cpu_cores": 1,
     "cpu_sockets": 10,
-    "total_memory_gb": 20.71
+    "total_memory_gb": 20.71,
+    "update_available": true
   }
 ]
 ```
@@ -1270,6 +1274,7 @@ Retrieves comprehensive hardware, BIOS, OS distribution, kernel, VDSM/libvirt ve
   - `power_management`: Out-of-band IPMI / fencing configuration (`enabled`, `pm_type`, `address`).
   - `nics_count`: Physical network interface count.
   - `numa_nodes_count`: NUMA topology node count.
+  - `update_available`: Boolean indicating whether OS or package updates are available.
 
 ---
 
@@ -2112,6 +2117,51 @@ Unassigns an inventory tag from an oVirt / OLVM user.
   - `user_name_or_id` *(string, required)*: Username or UUID of the user.
   - `tag_name_or_id` *(string, required)*: Name or UUID of the inventory tag to unassign.
 - **Outputs:** `TagAssignmentResult`
+
+---
+
+### 103. `ovirt_host_upgrade_check`
+
+Checks if operating system or package updates are available for a hypervisor host. Triggers the oVirt / OLVM engine to query host package repositories via Ansible runner and updates the host's `update_available` flag.
+
+> [!NOTE]
+> Valid host statuses for upgrade check are `up` or `non_operational`. If called on a host in an unsupported state, the tool performs a pre-validation guard to guide the operator.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Display name or UUID of the hypervisor host.
+- **Outputs (`HostUpgradeCheckResult`):**
+  - `success`: Whether the check was initiated successfully.
+  - `host_id`: Hypervisor host UUID.
+  - `host_name`: Hypervisor host name.
+  - `status`: Current host status (`up`, `non_operational`).
+  - `update_available`: Boolean indicating whether updates are available.
+  - `message`: Diagnostic outcome message.
+
+---
+
+### 104. `ovirt_host_upgrade`
+
+Upgrades operating system packages and VDSM on a hypervisor host using the oVirt / OLVM host upgrade Ansible automation playbook.
+
+> [!CAUTION]
+> **Enterprise Safety Matrix ("Guard-Before-Act"):**
+> 1. **Maintenance Gate:** The host **MUST be in `maintenance` status** before starting an upgrade. If the host is `up`, the operation is strictly rejected to ensure all running virtual machines have been migrated off the host first using `ovirt_host_maintenance`.
+> 2. **Safe Mode Gate:** Modifying action in Safe Mode: requires `confirm=True` when `MCP_SAFE_MODE=true`.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Display name or UUID of the hypervisor host.
+  - `reboot` *(bool, optional, default: True)*: Whether to automatically reboot the hypervisor after the upgrade completes.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe mode (`MCP_SAFE_MODE=true`).
+  - `async_` *(bool, optional, default: True)*: Whether to execute the upgrade playbook asynchronously via the engine runner.
+  - `timeout_minutes` *(int, optional, default: 60)*: Maximum duration in minutes for the upgrade playbook execution.
+- **Outputs (`HostUpgradeResult`):**
+  - `success`: Whether the upgrade was initiated successfully.
+  - `action`: `"upgrade"`.
+  - `host_id`: Hypervisor host UUID.
+  - `host_name`: Hypervisor host name.
+  - `status`: Current host status (`"maintenance"`).
+  - `reboot_requested`: Whether automatic post-upgrade reboot is requested.
+  - `message`: Detailed execution status.
 
 ---
 
