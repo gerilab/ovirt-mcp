@@ -1,0 +1,21 @@
+# ==============================================================================
+# ovirt-mcp - Runtime Requirements
+# ==============================================================================
+# Python Version: >= 3.10, <= 3.12 (Tested on 3.10, 3.11, 3.12)
+# ==============================================================================
+
+# Model Context Protocol Official Python SDK (Server & Tools)
+mcp>=2.3.0
+
+# Data validation, type safety, and settings management
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# Official oVirt & OLVM REST API Python SDK
+ovirt-engine-sdk-python>=4.6.0
+
+# Fast HTTP client for engine PKI CA certificate retrieval & REST fallback
+httpx>=0.28.0
+
+# Configuration parsing
+pyyaml>=6.0.0
