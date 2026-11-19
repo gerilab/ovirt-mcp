@@ -38,3 +38,17 @@ def test_require_destructive_confirmation_safe_mode(monkeypatch: pytest.MonkeyPa
 
     # Should pass when confirmed=True
     require_destructive_confirmation("vm_delete", confirmed=True)
+
+
+def test_require_destructive_confirmation_blocked_in_read_only_mode_even_if_confirmed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that MCP_READ_ONLY strictly blocks mutations even if confirmed=True is passed."""
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=True, mcp_safe_mode=True),
+    )
+    with pytest.raises(OvirtPermissionError) as exc_info:
+        require_destructive_confirmation("vm_delete", confirmed=True)
+    assert "read-only mode" in str(exc_info.value)
+

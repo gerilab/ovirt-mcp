@@ -1,8 +1,8 @@
-# ovirt-mcp: Enterprise Virtualization Manager for AI Agents
+# ovirt-mcp: Virtualization Manager for AI Agents
 
 Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux Virtualization Manager (OLVM)** and **oVirt** hypervisor engines. 
 
-`ovirt-mcp` connects LLMs (Claude, GPT, Llama, Mistral, Ollama) directly to your enterprise virtualization infrastructure with token-optimized responses, deep hardware inspection, audit trails, and multi-layered safety controls.
+`ovirt-mcp` connects LLMs (Claude, GPT, Llama, Mistral, Ollama) directly to your virtualization infrastructure with token-optimized responses, deep hardware inspection, audit trails, and multi-layered safety controls.
 
 ---
 
@@ -13,12 +13,13 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
 3. [Step-by-Step Installation Guide](#step-by-step-installation-guide)
 4. [Configuration (`.env`) Reference](#configuration-env-reference)
    - [Authentication & AAA Profiles](#authentication--aaa-profiles-crucial)
-   - [Service Account Best Practices](#service-account-best-practices)
+   - [Three-Tier Access & Safety Architecture](#three-tier-access--safety-architecture)
+   - [Service Account Provisioning Best Practices](#service-account-provisioning-best-practices)
    - [TLS & SSL Certificate Management](#tls--ssl-certificate-management)
 5. [Operational Modes](#operational-modes)
    - [Compact vs. Detailed Mode (Token Optimization)](#compact-vs-detailed-mode-token-optimization)
-   - [Safe Mode & Mutation Confirmation](#safe-mode--mutation-confirmation)
-   - [Read-Only Enforcement](#read-only-enforcement)
+   - [Safe Mode & Mutation Confirmation (Tier 3)](#safe-mode--mutation-confirmation-tier-3)
+   - [Read-Only Enforcement (Tier 2)](#read-only-enforcement-tier-2)
    - [Hierarchical Naming Convention](#hierarchical-naming-convention)
 6. [Tool Reference](#tool-reference)
    - [`ovirt_test_connection`](#1-ovirt_test_connection)
@@ -156,6 +157,11 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
    - [`ovirt_vm_backup_start`](#133-ovirt_vm_backup_start)
    - [`ovirt_vm_backup_finalize`](#134-ovirt_vm_backup_finalize)
 7. [Connecting to AI MCP Clients](#connecting-to-ai-mcp-clients)
+   - [Method 1: Docker Desktop for Claude (Zero-Install Setup)](#method-1-docker-desktop-for-claude-zero-install-setup)
+   - [Method 2: Classic 24/7 Docker Container (Network SSE Daemon)](#method-2-classic-247-docker-container-network-sse-daemon)
+   - [Method 3: Native Python Virtual Environment](#method-3-native-python-virtual-environment)
+   - [Method 4: Remote Linux IDE (VS Code with Remote - SSH / WSL)](#method-4-remote-linux-ide-vs-code-with-remote---ssh--wsl)
+   - [Method 5: Kiro IDE on Remote Linux](#method-5-kiro-ide-on-remote-linux)
 8. [Testing & Quality Verification](#testing--quality-verification)
 9. [Troubleshooting & FAQ](#troubleshooting--faq)
 
@@ -306,21 +312,77 @@ oVirt and OLVM use an internal authentication provider that requires the profile
 
 ---
 
-### Service Account Best Practices
+### Three-Tier Access & Safety Architecture
+
+To avoid security pitfalls and clarify how permissions interact between the oVirt/OLVM hypervisor and the MCP server, `ovirt-mcp` implements a strict **Three-Tier Security Architecture**:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  Tier 1: oVirt / OLVM Engine AAA Role Permissions (Engine-Level Floor) │
+│  • ReadOnlyAdmin: Physically blocks ALL mutations (HTTP 403 Forbidden).│
+│  • Operational/Admin Roles: Allow specific mutations within role scope.│
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+┌───────────────────────────────────▼────────────────────────────────────┐
+│  Tier 2: MCP Server Mode Gate (MCP_READ_ONLY in .env)                  │
+│  • true:  Locally aborts all mutating tools before network calls.      │
+│  • false: Allows tool calls to proceed to confirmation check.          │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+┌───────────────────────────────────▼────────────────────────────────────┐
+│  Tier 3: Safe Mode Gate & Confirmation (MCP_SAFE_MODE + confirm=True)  │
+│  • true (default): Mutating/destructive actions require confirm=True.  │
+│  • If confirm=False/missing: Operation is safely rejected with prompt. │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+#### How the Tiers Interact (The Access Decision Matrix)
+
+| Operational Scenario | oVirt / OLVM AAA Role | `MCP_READ_ONLY` | `MCP_SAFE_MODE` | Runtime Behavior |
+|---|---|---|---|---|
+| **Read-Only Monitoring (Recommended for Read-Only Agents)** | `ReadOnlyAdmin` | `true` (or `false`) | Any | **No mutations possible.** If `MCP_READ_ONLY=true`, blocked locally. Even if `MCP_READ_ONLY=false`, oVirt engine physically rejects any write with HTTP 403 Forbidden. |
+| **Operational Automation (Recommended Standard)** | `UserVmManager` / `ClusterAdmin` | `false` | `true` (default) | **Safe controlled execution.** AI agents can perform allowed mutations (start, stop, snapshot, disk resize), but *must* provide `confirm=True` for each mutating call. |
+| **Emergency Lock / Maintenance Freeze** | Any operational role | `true` | Any | **Instant client-side freeze.** All agent mutations are blocked immediately at the MCP layer without changing user accounts or roles in oVirt. |
+| **Autonomous Pipeline (CI/CD / Headless Scripts)** | Scoped custom role | `false` | `false` | **Direct execution without prompts.** AI agents can execute mutations without passing `confirm=True`. *(Use with strict caution and scoped roles).* |
 
 > [!IMPORTANT]
-> For production environments, **do not use full administrative superuser credentials**. Enterprise best practice is provisioning a dedicated, restricted service account for the AI Agent:
->
-> 1. **Option A: Programmatically via MCP Tools:**
->    - Register the service user:
->      `ovirt_user_add(user_name="mcp-service", domain="internal-authz")`
->    - Grant least-privilege role (e.g. `PowerUserRole` or `ReadOnlyAdmin`):
->      `ovirt_permission_add(user_name_or_id="mcp-service@internal-authz", role_name_or_id="PowerUserRole", target_type="cluster", target_name_or_id="DefaultCluster")`
-> 2. **Option B: Via Administration Web Portal:**
->    - In the oVirt/OLVM Administration Portal, navigate to **Administration** &rarr; **Configure** &rarr; **Roles**.
->    - For read-only monitoring: Assign `ReadOnlyAdmin` role to `mcp-service@internal-authz`.
->    - For VM operations (start/stop/reboot): Assign `UserVmManager` or `UserVmRunTimePermissions` scoped to the designated Cluster or Data Center.
-> 3. Set `OVIRT_USERNAME=mcp-service@internal-authz` and its password in your `.env`.
+> **Understanding the Role vs. MCP Flag Distinction:**
+> - If you assign `ReadOnlyAdmin` to the service account in oVirt, the account **cannot modify anything**, regardless of any `.env` setting or `confirm=True`. oVirt engine enforces this physically.
+> - If you want the agent to manage VMs (start, stop, reboot, snapshots), the service account **must have an operational role** in oVirt (e.g. `UserVmManager`, `PowerUserRole`, or a custom scoped role).
+> - Having an operational role in oVirt does **not** give the AI agent free rein: you still control safety locally via `MCP_READ_ONLY=true/false` and `MCP_SAFE_MODE=true` (requiring `confirm=True`).
+
+---
+
+### Service Account Provisioning Best Practices
+
+For production environments, **do not use full administrative superuser credentials (`admin@internal`)**. Provision a dedicated service account for your AI agents:
+
+1. **For Monitoring-Only Agents:**
+   - Register the user:
+     ```text
+     ovirt_user_add(user_name="mcp-monitor", domain="internal-authz")
+     ```
+   - Assign the `ReadOnlyAdmin` role:
+     ```text
+     ovirt_permission_add(user_name_or_id="mcp-monitor@internal-authz", role_name_or_id="ReadOnlyAdmin", target_type="system")
+     ```
+   - In `.env`: set `OVIRT_USERNAME=mcp-monitor@internal-authz` and `MCP_READ_ONLY=true`.
+
+2. **For Operational VM Management Agents:**
+   - Register the user:
+     ```text
+     ovirt_user_add(user_name="mcp-operator", domain="internal-authz")
+     ```
+   - Assign scoped operational role (e.g. `UserVmManager` scoped to a specific cluster or datacenter):
+     ```text
+     ovirt_permission_add(user_name_or_id="mcp-operator@internal-authz", role_name_or_id="UserVmManager", target_type="cluster", target_name_or_id="DefaultCluster")
+     ```
+   - In `.env`: set `OVIRT_USERNAME=mcp-operator@internal-authz`, `MCP_READ_ONLY=false`, and `MCP_SAFE_MODE=true`.
+
+3. **Via oVirt / OLVM Administration Web Portal:**
+   - Navigate to **Administration** &rarr; **Configure** &rarr; **Roles**.
+   - For read-only monitoring: Assign `ReadOnlyAdmin` to `mcp-service@internal-authz`.
+   - For VM operations: Assign `UserVmManager` or `UserVmRunTimePermissions` scoped to the designated Cluster or Data Center.
 
 ---
 
@@ -350,16 +412,18 @@ Different LLMs have different context window sizes and token costs. `ovirt-mcp` 
 - **Server-wide default:** Set `MCP_COMPACT_MODE=true` in `.env` to make all `ovirt_vm_get` calls lightweight by default.
 - **Per-query override:** The calling agent or user can pass `compact=True` or `compact=False` dynamically to any `ovirt_vm_get` call.
 
-### Safe Mode & Mutation Confirmation
+### Safe Mode & Mutation Confirmation (Tier 3)
 
 To prevent accidental hypervisor outages from hallucinatory or unintended agent actions:
-1. When `MCP_SAFE_MODE=true` (the default), mutating operations require an explicit `confirm=True` parameter.
-2. If `confirm=True` is not provided, the server returns an explicit confirmation request with safety details before taking action.
+1. When `MCP_SAFE_MODE=true` (the default) and `MCP_READ_ONLY=false`, mutating operations strictly require an explicit `confirm=True` parameter.
+2. If `confirm=True` is omitted or set to `False`, the server raises `OvirtValidationError` with a detailed description of the pending mutation, prompting the human operator or supervisory agent to confirm.
+3. If `MCP_READ_ONLY=true` is set, the operation is blocked immediately with `OvirtPermissionError` (Tier 2), even if `confirm=True` is provided.
 
-### Read-Only Enforcement
+### Read-Only Enforcement (Tier 2)
 
 When `MCP_READ_ONLY=true` is set:
-- Any action that attempts to modify engine state (stopping VMs, reboots, disk manipulation, etc.) is rejected immediately with `SecurityError: Operation blocked: Server is in READ-ONLY mode`.
+- Any action that attempts to modify engine state (stopping VMs, reboots, disk manipulation, quota creation, etc.) is rejected immediately with `OvirtPermissionError: Operation prohibited: Server is operating in read-only mode (MCP_READ_ONLY=true)`.
+- Rejections occur locally in the MCP process without transmitting any mutating API request to the hypervisor engine.
 
 ### Hierarchical Naming Convention
 
@@ -2888,9 +2952,10 @@ Finalizes a VM backup session after backup software completes transferring disk 
 
 ## Connecting to AI MCP Clients
 
-`ovirt-mcp` supports two primary deployment models:
-1. **Local Desktop Mode (`stdio`):** Claude Desktop launches the server on-demand on your local machine (via Docker or Python venv).
-2. **24/7 Network Daemon Mode (`sse`):** The server runs continuously in background (on a home server, NAS, Proxmox, or cloud VM) as a classic Docker container. Any AI client (Claude Desktop, Cursor, LibreChat) connects over HTTP via Server-Sent Events (`/sse`).
+`ovirt-mcp` supports versatile deployment models across desktop, remote server, and containerized architectures:
+1. **Local Desktop Mode (`stdio`):** Claude Desktop or local LLM agents launch the server on-demand on your workstation via Docker or Python venv.
+2. **24/7 Network Daemon Mode (`sse`):** The server runs continuously in background (on Proxmox LXC/VM, TrueNAS, unRAID, or dedicated Linux server) as a Docker container. Any AI client connects over HTTP via Server-Sent Events (`/sse`).
+3. **Remote Linux IDE Environments (`stdio`):** When developing on a remote Linux jumpbox or server via **VS Code (Remote - SSH / WSL)** or **Kiro IDE**, the AI agent runs `ovirt-mcp` natively inside the remote environment's Python virtualenv.
 
 ---
 
@@ -2898,7 +2963,14 @@ Finalizes a VM backup session after backup software completes transferring disk 
 
 No Python, C compiler, or virtual environment required on your workstation!
 
-#### Step 1: Build the Docker Image
+#### Step 1: Pull Pre-built Container or Build Locally
+
+Pull the official multi-architecture image (`linux/amd64` and `linux/arm64`) automatically published by GitHub Actions:
+```bash
+docker pull ghcr.io/gerilab/ovirt-mcp:latest
+```
+
+*(Or build it locally from source)*:
 ```bash
 git clone https://github.com/gerilab/ovirt-mcp.git
 cd ovirt-mcp
@@ -2911,7 +2983,7 @@ Locate your configuration file:
 - **Linux:** `~/.config/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-Add the `ovirt` server configuration:
+Add the `ovirt` server configuration (using either `ghcr.io/gerilab/ovirt-mcp:latest` or `ovirt-mcp`):
 ```json
 {
   "mcpServers": {
@@ -2922,17 +2994,17 @@ Add the `ovirt` server configuration:
         "-i",
         "--rm",
         "-e", "OVIRT_URL=https://olvm-engine.example.com/ovirt-engine/api",
-        "-e", "OVIRT_USERNAME=admin@internal",
+        "-e", "OVIRT_USERNAME=mcp-service@internal-authz",
         "-e", "OVIRT_PASSWORD=YourSecurePasswordHere",
         "-e", "OVIRT_INSECURE=true",
         "-e", "MCP_COMPACT_MODE=true",
-        "ovirt-mcp"
+        "ghcr.io/gerilab/ovirt-mcp:latest"
       ]
     }
   }
 }
 ```
-Restart Claude Desktop. The hammer icon will show all 112 oVirt tools loaded!
+Restart Claude Desktop. The hammer icon will show all 134 oVirt tools loaded!
 
 ---
 
@@ -2951,7 +3023,7 @@ cp .env.example .env
 Edit `.env` with your engine credentials:
 ```env
 OVIRT_URL=https://olvm-engine.example.com/ovirt-engine/api
-OVIRT_USERNAME=admin@internal
+OVIRT_USERNAME=mcp-service@internal-authz
 OVIRT_PASSWORD=YourSecurePasswordHere
 OVIRT_INSECURE=true
 MCP_TRANSPORT=sse
@@ -2963,20 +3035,20 @@ Start the daemon in background:
 docker compose up -d
 ```
 
-*(Alternatively, without docker-compose)*:
+*(Alternatively, run with docker directly using GHCR)*:
 ```bash
 docker run -d \
   --name ovirt-mcp \
   --restart unless-stopped \
   -p 8000:8000 \
   -e OVIRT_URL="https://olvm-engine.example.com/ovirt-engine/api" \
-  -e OVIRT_USERNAME="admin@internal" \
+  -e OVIRT_USERNAME="mcp-service@internal-authz" \
   -e OVIRT_PASSWORD="YourSecurePasswordHere" \
   -e OVIRT_INSECURE="true" \
   -e MCP_TRANSPORT="sse" \
   -e MCP_HOST="0.0.0.0" \
   -e MCP_PORT="8000" \
-  ovirt-mcp
+  ghcr.io/gerilab/ovirt-mcp:latest
 ```
 
 #### Step 2: Check Logs and Health
@@ -3021,7 +3093,7 @@ Configure Claude Desktop:
       "command": "/automation/mcp/ovirt-mcp/.venv/bin/ovirt-mcp",
       "env": {
         "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
-        "OVIRT_USERNAME": "admin@internal",
+        "OVIRT_USERNAME": "mcp-service@internal-authz",
         "OVIRT_PASSWORD": "YourSecurePasswordHere",
         "OVIRT_INSECURE": "true",
         "MCP_COMPACT_MODE": "true"
@@ -3030,6 +3102,104 @@ Configure Claude Desktop:
   }
 }
 ```
+
+---
+
+### Method 4: Remote Linux IDE (VS Code with Remote - SSH / WSL)
+
+This is the most common enterprise setup: your developer workstation runs **VS Code**, connected via **Remote - SSH** (or **WSL**) to a remote Linux development server, jumpbox, or VM where `ovirt-mcp` is checked out and its Python virtualenv is installed.
+
+Inside the remote VS Code session, your AI coding extensions (such as **Cline**, **Roo Code**, **Continue**, or **GitHub Copilot**) run directly on the remote Linux machine.
+
+#### Step 1: Verify the Remote Virtualenv
+
+On the remote Linux server:
+```bash
+cd /automation/mcp/ovirt-mcp
+source .venv/bin/activate
+
+# Verify server boots and recognizes flags in stdio mode:
+python -m ovirt_mcp.server --help
+```
+Ensure your `/automation/mcp/ovirt-mcp/.env` contains your connection credentials and safety policies.
+
+#### Step 2: Configure VS Code Extension
+
+##### Option A: For Cline or Roo Code
+Open the extension's MCP Settings UI, or directly edit `cline_mcp_settings.json` (located in `~/.vscode-server/data/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` on the remote host):
+
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "/automation/mcp/ovirt-mcp/.venv/bin/python",
+      "args": ["-m", "ovirt_mcp.server"],
+      "cwd": "/automation/mcp/ovirt-mcp",
+      "env": {
+        "PYTHONPATH": "/automation/mcp/ovirt-mcp/src"
+      }
+    }
+  }
+}
+```
+
+##### Option B: Workspace-Level Configuration (`.vscode/mcp.json`)
+If your extension supports project-level MCP files, add `.vscode/mcp.json` inside `/automation/mcp/ovirt-mcp`:
+
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": ["-m", "ovirt_mcp.server"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      }
+    }
+  }
+}
+```
+
+> [!TIP]
+> Setting `"cwd"` to `/automation/mcp/ovirt-mcp` automatically loads your `.env` configuration file via `python-dotenv`. You do not need to repeat passwords or secrets inside your VS Code settings unless preferred.
+
+---
+
+### Method 5: Kiro IDE on Remote Linux
+
+**Kiro IDE** is an agentic AI-native IDE. When working in Kiro connected to a remote Linux workspace or running Kiro on a Linux desktop/server:
+
+#### Step 1: Configure `.kiro/mcp.json` or `.kiro/settings.json`
+
+In your workspace root (or in user settings), configure `ovirt-mcp`:
+
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "/automation/mcp/ovirt-mcp/.venv/bin/python",
+      "args": ["-m", "ovirt_mcp.server"],
+      "cwd": "/automation/mcp/ovirt-mcp",
+      "env": {
+        "PYTHONPATH": "/automation/mcp/ovirt-mcp/src"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+#### Step 2: Verification in Kiro
+
+1. Open Kiro on the remote workspace directory `/automation/mcp/ovirt-mcp`.
+2. In Kiro's MCP panel, verify that `ovirt` appears and status is **Connected** with 134 tools available.
+3. In the Kiro chat prompt, run a test query:
+   ```text
+   Verify hypervisor connectivity using ovirt_test_connection, then list all VMs with ovirt_vm_list.
+   ```
+4. For mutating operations (e.g. `ovirt_vm_snapshot_create`), Kiro will respect `MCP_SAFE_MODE` and ask for confirmation (`confirm=True`).
 
 ---
 
