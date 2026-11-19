@@ -67,6 +67,20 @@ class OvirtConfig(BaseSettings):
         default=True,
         description="Enable safe mode (requires explicit confirmation flags for destructive operations)",
     )
+    mcp_transport: str = Field(
+        default="stdio",
+        description="Transport protocol for MCP communications: 'stdio', 'sse', or 'streamable-http'",
+    )
+    mcp_host: str = Field(
+        default="0.0.0.0",
+        description="Bind IP address when running with network transport ('sse' or 'streamable-http')",
+    )
+    mcp_port: int = Field(
+        default=8000,
+        ge=1,
+        le=65535,
+        description="Listening TCP port when running with network transport ('sse' or 'streamable-http')",
+    )
 
     def sanitized_url(self) -> str:
         """Return the URL stripped of trailing slash."""

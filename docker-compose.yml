@@ -1,0 +1,32 @@
+# ==============================================================================
+# ovirt-mcp - Docker Compose for 24/7 Network Daemon Mode (SSE Transport)
+# Run continuously in background on home server, NAS, Proxmox, or cloud VM
+# ==============================================================================
+services:
+  ovirt-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ovirt-mcp:latest
+    container_name: ovirt-mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # oVirt / OLVM Engine Connection Settings
+      - OVIRT_URL=${OVIRT_URL:-https://olvm.example.com/ovirt-engine/api}
+      - OVIRT_USERNAME=${OVIRT_USERNAME:-admin@internal}
+      - OVIRT_PASSWORD=${OVIRT_PASSWORD:-YourPasswordHere}
+      - OVIRT_INSECURE=${OVIRT_INSECURE:-true}
+
+      # MCP Transport Settings: SSE network daemon mode
+      - MCP_TRANSPORT=sse
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8000
+      - MCP_SAFE_MODE=${MCP_SAFE_MODE:-true}
+      - MCP_COMPACT_MODE=${MCP_COMPACT_MODE:-true}
+      - MCP_LOG_LEVEL=${MCP_LOG_LEVEL:-INFO}
+
+    env_file:
+      - path: .env
+        required: false

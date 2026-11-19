@@ -2372,9 +2372,24 @@ def ovirt_host_bond_delete(
 
 
 def main() -> None:
-    """Run the MCP server over standard I/O (stdio)."""
-    logger.info("Starting oVirt/OLVM MCP server...")
-    mcp.run(transport="stdio")
+    """Run the MCP server over standard I/O (stdio) or network HTTP/SSE transport."""
+    config = get_config()
+    transport = config.mcp_transport.strip().lower()
+
+    if transport in ("sse", "streamable-http"):
+        logger.info(
+            "Starting oVirt/OLVM MCP server in network daemon mode (transport='%s', bind='%s:%d')...",
+            transport,
+            config.mcp_host,
+            config.mcp_port,
+        )
+        if transport == "streamable-http":
+            mcp.run(transport="streamable-http", host=config.mcp_host, port=config.mcp_port)
+        else:
+            mcp.run(transport="sse", host=config.mcp_host, port=config.mcp_port)
+    else:
+        logger.info("Starting oVirt/OLVM MCP server in interactive stdio mode...")
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

@@ -60,5 +60,8 @@ RUN useradd -m -u 1000 -s /bin/bash appuser
 USER appuser
 WORKDIR /home/appuser
 
-# MCP servers communicate via standard input/output (stdio JSON-RPC)
+# Expose network daemon port for SSE / HTTP transport mode
+EXPOSE 8000
+
+# MCP server entrypoint: supports both stdio (default) and SSE network daemon
 ENTRYPOINT ["ovirt-mcp"]

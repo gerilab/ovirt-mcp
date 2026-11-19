@@ -2167,38 +2167,30 @@ Upgrades operating system packages and VDSM on a hypervisor host using the oVirt
 
 ## Connecting to AI MCP Clients
 
-### 1. Claude Desktop Integration
+`ovirt-mcp` supports two primary deployment models:
+1. **Local Desktop Mode (`stdio`):** Claude Desktop launches the server on-demand on your local machine (via Docker or Python venv).
+2. **24/7 Network Daemon Mode (`sse`):** The server runs continuously in background (on a home server, NAS, Proxmox, or cloud VM) as a classic Docker container. Any AI client (Claude Desktop, Cursor, LibreChat) connects over HTTP via Server-Sent Events (`/sse`).
 
-Add `ovirt-mcp` to your Claude Desktop configuration file:
+---
+
+### Method 1: Docker Desktop for Claude (Zero-Install Setup)
+
+No Python, C compiler, or virtual environment required on your workstation!
+
+#### Step 1: Build the Docker Image
+```bash
+git clone https://github.com/gerilab/ovirt-mcp.git
+cd ovirt-mcp
+docker build -t ovirt-mcp .
+```
+
+#### Step 2: Configure Claude Desktop
+Locate your configuration file:
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Linux:** `~/.config/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-```json
-{
-  "mcpServers": {
-    "ovirt": {
-      "command": "/automation/mcp/ovirt-mcp/.venv/bin/ovirt-mcp",
-      "env": {
-        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
-        "OVIRT_USERNAME": "admin@internal",
-        "OVIRT_PASSWORD": "YourSecurePasswordHere",
-        "OVIRT_INSECURE": "true",
-        "MCP_COMPACT_MODE": "true"
-      }
-    }
-  }
-}
-```
-
-### 2. Running via Docker Container (Zero-Install Setup)
-
-Build the image locally:
-```bash
-docker build -t ovirt-mcp .
-```
-
-Configure Claude Desktop to run `ovirt-mcp` via Docker:
+Add the `ovirt` server configuration:
 ```json
 {
   "mcpServers": {
@@ -2219,10 +2211,80 @@ Configure Claude Desktop to run `ovirt-mcp` via Docker:
   }
 }
 ```
+Restart Claude Desktop. The hammer icon will show all 107 oVirt tools loaded!
 
-### 3. Running Standalone via Terminal
+---
 
-Run the server directly using standard I/O (stdio) transport:
+### Method 2: Classic 24/7 Docker Container (Network SSE Daemon)
+
+Run `ovirt-mcp` continuously in background on a central server (e.g. Proxmox LXC/VM, TrueNAS, unRAID, or dedicated Linux server). Multiple team members and AI clients connect to the shared instance over LAN without installing Docker on their local laptops.
+
+#### Step 1: Start with Docker Compose
+Clone the repository and copy the environment template:
+```bash
+git clone https://github.com/gerilab/ovirt-mcp.git
+cd ovirt-mcp
+cp .env.example .env
+```
+
+Edit `.env` with your engine credentials:
+```env
+OVIRT_URL=https://olvm-engine.example.com/ovirt-engine/api
+OVIRT_USERNAME=admin@internal
+OVIRT_PASSWORD=YourSecurePasswordHere
+OVIRT_INSECURE=true
+MCP_TRANSPORT=sse
+MCP_PORT=8000
+```
+
+Start the daemon in background:
+```bash
+docker compose up -d
+```
+
+*(Alternatively, without docker-compose)*:
+```bash
+docker run -d \
+  --name ovirt-mcp \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -e OVIRT_URL="https://olvm-engine.example.com/ovirt-engine/api" \
+  -e OVIRT_USERNAME="admin@internal" \
+  -e OVIRT_PASSWORD="YourSecurePasswordHere" \
+  -e OVIRT_INSECURE="true" \
+  -e MCP_TRANSPORT="sse" \
+  -e MCP_HOST="0.0.0.0" \
+  -e MCP_PORT="8000" \
+  ovirt-mcp
+```
+
+#### Step 2: Check Logs and Health
+```bash
+docker logs -f ovirt-mcp
+```
+Output confirms:
+```text
+INFO - Starting oVirt/OLVM MCP server in network daemon mode (transport='sse', bind='0.0.0.0:8000')...
+```
+
+#### Step 3: Connect AI Clients via Network URL
+Configure Claude Desktop or Cursor on any computer on your network:
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "url": "http://192.0.2.10:8000/sse"
+    }
+  }
+}
+```
+*(Replace `192.0.2.10` with your central server's IP address).*
+
+---
+
+### Method 3: Native Python Virtual Environment
+
+If you prefer running directly on your host operating system without Docker:
 
 ```bash
 cd /automation/mcp/ovirt-mcp
@@ -2230,9 +2292,22 @@ source .venv/bin/activate
 ovirt-mcp
 ```
 
-Or using python module syntax:
-```bash
-python -m ovirt_mcp
+Configure Claude Desktop:
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "/automation/mcp/ovirt-mcp/.venv/bin/ovirt-mcp",
+      "env": {
+        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+        "OVIRT_USERNAME": "admin@internal",
+        "OVIRT_PASSWORD": "YourSecurePasswordHere",
+        "OVIRT_INSECURE": "true",
+        "MCP_COMPACT_MODE": "true"
+      }
+    }
+  }
+}
 ```
 
 ---

@@ -12,6 +12,23 @@ def test_config_defaults() -> None:
     assert cfg.ovirt_insecure is False
     assert cfg.ovirt_timeout == 30
     assert cfg.mcp_safe_mode is True
+    assert cfg.mcp_transport == "stdio"
+    assert cfg.mcp_host == "0.0.0.0"
+    assert cfg.mcp_port == 8000
+
+
+def test_config_transport_custom() -> None:
+    """Test custom network transport configuration."""
+    cfg = OvirtConfig(
+        _env_file=None,  # type: ignore[call-arg]
+        ovirt_password="test_secret",  # type: ignore[arg-type]
+        mcp_transport="sse",
+        mcp_host="127.0.0.1",
+        mcp_port=9090,
+    )
+    assert cfg.mcp_transport == "sse"
+    assert cfg.mcp_host == "127.0.0.1"
+    assert cfg.mcp_port == 9090
 
 
 def test_sanitized_url() -> None:
