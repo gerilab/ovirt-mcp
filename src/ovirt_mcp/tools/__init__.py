@@ -9,6 +9,8 @@ from .backups import (
     list_vm_checkpoints_tool,
     start_vm_backup_tool,
 )
+from .clusters import get_cluster_tool, list_clusters_tool
+from .compute import get_vm_console_file_tool
 from .events import list_system_events_tool, list_vm_events_tool
 from .users import (
     add_permission_tool,
@@ -22,6 +24,7 @@ from .users import (
     list_users_tool,
     remove_permission_tool,
 )
+from .vm_exports import export_disk_tool, export_vm_tool, import_vm_tool
 from .vm_pools import (
     allocate_vm_pool_vm_tool,
     create_vm_pool_tool,
@@ -42,12 +45,18 @@ __all__ = [
     "delete_user_tool",
     "delete_vm_checkpoint_tool",
     "delete_vm_pool_tool",
+    "export_disk_tool",
+    "export_vm_tool",
     "finalize_vm_backup_tool",
+    "get_cluster_tool",
     "get_user_tool",
     "get_vm_backup_tool",
     "get_vm_checkpoint_tool",
+    "get_vm_console_file_tool",
     "get_vm_pool_tool",
     "get_vm_tool",
+    "import_vm_tool",
+    "list_clusters_tool",
     "list_permissions_tool",
     "list_roles_tool",
     "list_system_events_tool",

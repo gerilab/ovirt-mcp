@@ -7,11 +7,13 @@ import pytest
 from ovirt_mcp.client.exceptions import OvirtPermissionError, OvirtValidationError
 from ovirt_mcp.config import OvirtConfig
 from ovirt_mcp.models.compute import (
+    VmConsoleFileInfo,
     VmConsoleTicket,
     VmGraphicsConsoleInfo,
     VmUpdateResult,
 )
 from ovirt_mcp.tools.compute import (
+    get_vm_console_file_tool,
     get_vm_console_ticket_tool,
     list_vm_graphics_consoles_tool,
     update_vm_tool,
@@ -201,3 +203,40 @@ def test_get_vm_console_ticket_success() -> None:
     assert res.ticket_value == "s3cr3tT1ck3t!"
     assert res.expiry_seconds == 300
     mock_vm_service.ticket.assert_called_once()
+
+
+def test_get_vm_console_file_vm_down() -> None:
+    mock_client, _, _ = _setup_mock_vm(status_str="down")
+
+    with patch("ovirt_mcp.tools.compute.get_client", return_value=mock_client):
+        with pytest.raises(OvirtValidationError) as exc_info:
+            get_vm_console_file_tool("test-vm")
+        assert "must be powered on" in str(exc_info.value)
+
+
+def test_get_vm_console_file_success() -> None:
+    mock_client, mock_vm_service, _ = _setup_mock_vm(status_str="up")
+
+    mock_console = MagicMock()
+    mock_console.protocol.value = "vnc"
+    mock_console.address = "10.0.0.100"
+    mock_console.port = 5901
+    mock_console.tls_port = None
+    mock_vm_service.graphics_consoles_service().list.return_value = [mock_console]
+
+    mock_ticket = MagicMock()
+    mock_ticket.value = "one-time-pwd"
+    mock_vm_service.ticket.return_value = mock_ticket
+
+    with patch("ovirt_mcp.tools.compute.get_client", return_value=mock_client):
+        res = get_vm_console_file_tool("test-vm", protocol="vnc", expiry_seconds=180)
+
+    assert isinstance(res, VmConsoleFileInfo)
+    assert res.protocol == "vnc"
+    assert res.host == "10.0.0.100"
+    assert res.port == 5901
+    assert res.ticket_value == "one-time-pwd"
+    assert "[virt-viewer]" in res.vv_content
+    assert "type=vnc" in res.vv_content
+    assert "port=5901" in res.vv_content
+    assert "password=one-time-pwd" in res.vv_content

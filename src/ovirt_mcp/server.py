@@ -20,9 +20,16 @@ from ovirt_mcp.models.backup import (
     VmBackupInfo,
     VmCheckpointInfo,
 )
+from ovirt_mcp.models.cluster import (
+    ClusterDetail,
+    ClusterSummary,
+)
 from ovirt_mcp.models.compute import (
+    VmConsoleFileInfo,
     VmConsoleTicket,
+    VmExportResult,
     VmGraphicsConsoleInfo,
+    VmImportResult,
     VmUpdateResult,
 )
 from ovirt_mcp.models.datacenter import (
@@ -168,7 +175,12 @@ from ovirt_mcp.tools.backups import (
     list_vm_checkpoints_tool,
     start_vm_backup_tool,
 )
+from ovirt_mcp.tools.clusters import (
+    get_cluster_tool,
+    list_clusters_tool,
+)
 from ovirt_mcp.tools.compute import (
+    get_vm_console_file_tool,
     get_vm_console_ticket_tool,
     list_vm_graphics_consoles_tool,
     update_vm_tool,
@@ -296,6 +308,11 @@ from ovirt_mcp.tools.users import (
     list_roles_tool,
     list_users_tool,
     remove_permission_tool,
+)
+from ovirt_mcp.tools.vm_exports import (
+    export_disk_tool,
+    export_vm_tool,
+    import_vm_tool,
 )
 from ovirt_mcp.tools.vm_pools import (
     allocate_vm_pool_vm_tool,
@@ -1191,6 +1208,27 @@ def ovirt_vm_ticket(
     )
 
 
+@mcp.tool(
+    name="ovirt_vm_console_file",
+    description=(
+        "Generate a complete Virt-Viewer .vv configuration file payload for direct graphical "
+        "console (VNC / SPICE) access. The VM must be running (status='up'). "
+        "Returns connection parameters and ready-to-save .vv content for remote-viewer."
+    ),
+)
+def ovirt_vm_console_file(
+    name_or_id: str,
+    protocol: str | None = None,
+    expiry_seconds: int = 120,
+) -> VmConsoleFileInfo:
+    """Generate a Virt-Viewer .vv configuration file for graphical console access."""
+    return get_vm_console_file_tool(
+        name_or_id=name_or_id,
+        protocol=protocol,
+        expiry_seconds=expiry_seconds,
+    )
+
+
 # ── HYPERVISOR HOST TOOLS ─────────────────────────────────────────────────────
 
 
@@ -1989,8 +2027,114 @@ def ovirt_template_delete(
 
 
 # =========================================================================
-# Data Center, Quota & Logical Network Tools
+# VM & Disk Export / Import Tools
 # =========================================================================
+
+
+@mcp.tool(
+    name="ovirt_vm_export",
+    description=(
+        "Export a virtual machine to an Export Storage Domain or as an Open Virtualization Archive (OVA) on a host. "
+        "Destructive action: requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_vm_export(
+    vm_name_or_id: str,
+    storage_domain: str | None = None,
+    host: str | None = None,
+    directory: str | None = None,
+    filename: str | None = None,
+    discard_snapshots: bool = False,
+    confirm: bool = False,
+) -> VmExportResult:
+    """Export a virtual machine to an Export Storage Domain or as an OVA."""
+    return export_vm_tool(
+        vm_name_or_id=vm_name_or_id,
+        storage_domain=storage_domain,
+        host=host,
+        directory=directory,
+        filename=filename,
+        discard_snapshots=discard_snapshots,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_import",
+    description=(
+        "Import an existing virtual machine from an Export Storage Domain into a designated cluster. "
+        "Destructive action: requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_vm_import(
+    storage_domain: str,
+    vm_name_or_id: str,
+    cluster: str,
+    target_storage_domain: str | None = None,
+    confirm: bool = False,
+) -> VmImportResult:
+    """Import a virtual machine from an Export Storage Domain."""
+    return import_vm_tool(
+        storage_domain=storage_domain,
+        vm_name_or_id=vm_name_or_id,
+        cluster=cluster,
+        target_storage_domain=target_storage_domain,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_disk_export",
+    description=(
+        "Export a virtual disk to an Export Storage Domain. "
+        "Destructive action: requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_disk_export(
+    disk_name_or_id: str,
+    storage_domain: str,
+    confirm: bool = False,
+) -> DiskOperationResult:
+    """Export a virtual disk to an Export Storage Domain."""
+    return export_disk_tool(
+        disk_name_or_id=disk_name_or_id,
+        storage_domain=storage_domain,
+        confirm=confirm,
+    )
+
+
+# =========================================================================
+# Cluster, Data Center, Quota & Logical Network Tools
+# =========================================================================
+
+
+@mcp.tool(
+    name="ovirt_cluster_list",
+    description=(
+        "List all virtualization clusters in oVirt / OLVM with CPU architectures, "
+        "CPU models (e.g. Intel SandyBridge, AMD EPYC), compatibility versions, "
+        "and memory ballooning policies."
+    ),
+)
+def ovirt_cluster_list(
+    search: str | None = None,
+    data_center: str | None = None,
+) -> list[ClusterSummary]:
+    """List virtualization clusters in the environment."""
+    return list_clusters_tool(search=search, data_center=data_center)
+
+
+@mcp.tool(
+    name="ovirt_cluster_get",
+    description=(
+        "Retrieve deep technical parameters and capability profile of a cluster, "
+        "including memory overcommit percentage, FIPS mode, default BIOS/chipset type, "
+        "live migration encryption, and fencing policies."
+    ),
+)
+def ovirt_cluster_get(name_or_id: str) -> ClusterDetail:
+    """Retrieve full configuration and capability profile of a cluster."""
+    return get_cluster_tool(name_or_id=name_or_id)
 
 
 @mcp.tool(

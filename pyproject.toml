@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ovirt-mcp"
-version = "0.1.0"
+version = "0.8.0"
 description = "Enterprise-grade Model Context Protocol (MCP) server for oVirt and Oracle Linux Virtualization Manager (OLVM)"
 readme = "README.md"
 license = { text = "Apache-2.0" }

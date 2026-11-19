@@ -13,9 +13,16 @@ from .backup import (
     VmBackupInfo,
     VmCheckpointInfo,
 )
+from .cluster import (
+    ClusterDetail,
+    ClusterSummary,
+)
 from .compute import (
+    VmConsoleFileInfo,
     VmConsoleTicket,
+    VmExportResult,
     VmGraphicsConsoleInfo,
+    VmImportResult,
     VmUpdateResult,
 )
 from .datacenter import (
@@ -135,6 +142,8 @@ __all__ = [
     "AffinityLabelResult",
     "AffinityRuleConfig",
     "BackupOperationResult",
+    "ClusterDetail",
+    "ClusterSummary",
     "DataCenterDetail",
     "DataCenterSummary",
     "DiskDetail",
@@ -191,6 +200,7 @@ __all__ = [
     "VmCdromResult",
     "VmCheckpointInfo",
     "VmCompactDetail",
+    "VmConsoleFileInfo",
     "VmConsoleTicket",
     "VmCpuDetails",
     "VmCreateResult",
@@ -200,10 +210,12 @@ __all__ = [
     "VmDiskAttachmentResult",
     "VmDiskInfo",
     "VmEvent",
+    "VmExportResult",
     "VmGraphicsConsoleInfo",
     "VmGuestOsInfo",
     "VmHardwareSecurity",
     "VmHighAvailability",
+    "VmImportResult",
     "VmIoAndScsi",
     "VmLifecycleInfo",
     "VmLifecycleResult",

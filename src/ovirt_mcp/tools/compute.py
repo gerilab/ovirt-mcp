@@ -8,6 +8,7 @@ import ovirtsdk4.types as sdk_types
 from ovirt_mcp.client import get_client
 from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtValidationError
 from ovirt_mcp.models.compute import (
+    VmConsoleFileInfo,
     VmConsoleTicket,
     VmGraphicsConsoleInfo,
     VmUpdateResult,
@@ -266,5 +267,140 @@ def get_vm_console_ticket_tool(
         message=(
             f"Console authentication ticket generated for VM '{vm_name}'. "
             f"Valid for {expiry_seconds} seconds. Use this ticket with your VNC/SPICE client."
+        ),
+    )
+
+
+def get_vm_console_file_tool(
+    name_or_id: str,
+    protocol: str | None = None,
+    expiry_seconds: int = 120,
+) -> VmConsoleFileInfo:
+    """Generate a complete Virt-Viewer .vv configuration file payload for direct graphical console access.
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+        protocol: Optional preferred graphics protocol ('spice' or 'vnc'). If None, selects first active console.
+        expiry_seconds: Ticket validity lifespan in seconds (default: 120s).
+
+    Returns:
+        VmConsoleFileInfo containing the complete .vv file content ready to save or stream to remote-viewer.
+    """
+    require_mutation_allowed("get_vm_console_file")
+
+    client = get_client()
+    conn = client.get_connection()
+    sys_service = conn.system_service()
+    vms_service = sys_service.vms_service()
+
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(vm.name)
+    vm_service = vms_service.vm_service(vm_id)
+
+    status_obj = getattr(vm, "status", None)
+    vm_status = str(getattr(status_obj, "value", status_obj or "")).lower()
+
+    if vm_status != "up":
+        raise OvirtValidationError(
+            f"Cannot generate graphical console file: VM '{vm_name}' is in status '{vm_status}'. "
+            "The virtual machine must be powered on (status='up') to connect to its display console.",
+            details={"vm_id": vm_id, "status": vm_status},
+        )
+
+    consoles = vm_service.graphics_consoles_service().list() or []
+    if not consoles:
+        raise OvirtValidationError(f"No graphical consoles configured for VM '{vm_name}'.")
+
+    target_console = None
+    if protocol:
+        p_clean = protocol.strip().lower()
+        for gc in consoles:
+            proto_val = str(
+                getattr(getattr(gc, "protocol", None), "value", getattr(gc, "protocol", ""))
+            ).lower()
+            if proto_val == p_clean:
+                target_console = gc
+                break
+        if not target_console:
+            raise OvirtValidationError(
+                f"No graphical console with protocol '{protocol}' found for VM '{vm_name}'."
+            )
+    else:
+        # Default to SPICE if available, else first
+        for gc in consoles:
+            proto_val = str(
+                getattr(getattr(gc, "protocol", None), "value", getattr(gc, "protocol", ""))
+            ).lower()
+            if proto_val == "spice":
+                target_console = gc
+                break
+        if not target_console:
+            target_console = consoles[0]
+
+    chosen_proto = str(
+        getattr(
+            getattr(target_console, "protocol", None),
+            "value",
+            getattr(target_console, "protocol", "vnc"),
+        )
+    ).lower()
+
+    # Generate ticket
+    ticket_spec = sdk_types.Ticket(expiry=expiry_seconds)
+    try:
+        ticket_res = vm_service.ticket(ticket=ticket_spec)
+        ticket_val = str(getattr(ticket_res, "value", ""))
+    except Exception as exc:
+        audit_log("get_vm_console_file", vm_name, {"vm_id": vm_id, "error": str(exc)}, "FAILED")
+        raise OvirtMCPError(f"Failed to generate console ticket for VM '{vm_name}': {exc}") from exc
+
+    # Determine host and port
+    host_addr = getattr(target_console, "address", None)
+    if not host_addr:
+        vm_host = getattr(vm, "host", None)
+        if vm_host and getattr(vm_host, "id", None):
+            try:
+                host_obj = sys_service.hosts_service().host_service(vm_host.id).get()
+                host_addr = getattr(host_obj, "address", None) or getattr(host_obj, "name", None)
+            except Exception:
+                pass
+    if not host_addr:
+        host_addr = "127.0.0.1"
+
+    port = getattr(target_console, "port", None)
+    tls_port = getattr(target_console, "tls_port", None)
+    active_port = int(port or tls_port or 5900)
+
+    # Build standard Virt-Viewer .vv file
+    vv_lines = [
+        "[virt-viewer]",
+        f"type={chosen_proto}",
+        f"host={host_addr}",
+        f"port={active_port}",
+        f"password={ticket_val}",
+        f"title={vm_name}",
+        "delete-this-file=1",
+        "fullscreen=0",
+        "toggle-fullscreen=shift+f11",
+        "release-cursor=shift+f12",
+    ]
+    if tls_port:
+        vv_lines.append(f"tls-port={tls_port}")
+    vv_content = "\n".join(vv_lines) + "\n"
+
+    audit_log("get_vm_console_file", vm_name, {"vm_id": vm_id, "protocol": chosen_proto}, "SUCCESS")
+    return VmConsoleFileInfo(
+        vm_id=vm_id,
+        vm_name=vm_name,
+        protocol=chosen_proto,
+        host=str(host_addr),
+        port=active_port,
+        ticket_value=ticket_val,
+        expiry_seconds=expiry_seconds,
+        vv_content=vv_content,
+        instructions=(
+            f"Save the 'vv_content' to a local file (e.g. '{vm_name}.vv') and launch with: "
+            f"`remote-viewer {vm_name}.vv`"
         ),
     )
