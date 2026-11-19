@@ -96,6 +96,7 @@ When adding an MCP tool, follow this 4-step pattern:
 ```python
 from pydantic import BaseModel, Field
 
+
 class VmSummary(BaseModel):
     id: str = Field(description="Unique UUID of the virtual machine")
     name: str = Field(description="Virtual machine display name")

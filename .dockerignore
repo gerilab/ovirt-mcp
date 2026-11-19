@@ -1,0 +1,38 @@
+# Git repository metadata
+.git/
+.gitignore
+
+# Environment and secrets (CRITICAL: prevent baking credentials into container)
+.env
+.env.*
+*.pem
+*.crt
+*.key
+pki/
+
+# Local virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python bytecode and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+
+# Testing and development caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pre-commit-config.yaml
+
+# Local scripts and temporary files
+scripts/
+tests/

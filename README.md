@@ -2191,7 +2191,36 @@ Add `ovirt-mcp` to your Claude Desktop configuration file:
 }
 ```
 
-### 2. Running Standalone via Terminal
+### 2. Running via Docker Container (Zero-Install Setup)
+
+Build the image locally:
+```bash
+docker build -t ovirt-mcp .
+```
+
+Configure Claude Desktop to run `ovirt-mcp` via Docker:
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e", "OVIRT_URL=https://olvm-engine.example.com/ovirt-engine/api",
+        "-e", "OVIRT_USERNAME=admin@internal",
+        "-e", "OVIRT_PASSWORD=YourSecurePasswordHere",
+        "-e", "OVIRT_INSECURE=true",
+        "-e", "MCP_COMPACT_MODE=true",
+        "ovirt-mcp"
+      ]
+    }
+  }
+}
+```
+
+### 3. Running Standalone via Terminal
 
 Run the server directly using standard I/O (stdio) transport:
 
