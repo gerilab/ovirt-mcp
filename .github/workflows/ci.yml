@@ -46,7 +46,13 @@ jobs:
 
       - name: Run unit tests
         run: |
-          python -m pytest -v --tb=short tests/unit
+          python -m pytest -v --tb=short tests/unit 2>&1 | tee pytest_output.log || {
+            echo "### Pytest Failure Details (${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 100 pytest_output.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
 
   docker:
     name: Docker Build & Verification
