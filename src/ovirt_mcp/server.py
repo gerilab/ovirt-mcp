@@ -29,7 +29,6 @@ from ovirt_mcp.models.disk import (
     DiskDetail,
     DiskOperationResult,
     DiskResizeResult,
-    VmDiskAttachmentInfo,
     VmDiskAttachmentResult,
 )
 from ovirt_mcp.models.event import SystemEvent, VmEvent
@@ -159,14 +158,10 @@ from ovirt_mcp.tools.datacenters import (
 )
 from ovirt_mcp.tools.disks import (
     attach_disk_tool,
-    attach_vm_disk_tool,
     copy_disk_tool,
     create_disk_tool,
-    create_vm_disk_tool,
     detach_disk_tool,
-    detach_vm_disk_tool,
     list_disks_tool,
-    list_vm_disks_tool,
     move_disk_tool,
     resize_disk_tool,
     sparsify_disk_tool,
@@ -851,18 +846,6 @@ def ovirt_disk_list(
 
 
 @mcp.tool(
-    name="ovirt_vm_disk_list",
-    description=(
-        "List all virtual disks attached to a virtual machine with attachment metadata "
-        "(attachment ID, interface, bootable, active, read-only status). Alias to ovirt_disk_list."
-    ),
-)
-def ovirt_vm_disk_list(name_or_id: str) -> list[VmDiskAttachmentInfo]:
-    """List disks attached to a virtual machine."""
-    return list_vm_disks_tool(name_or_id=name_or_id)
-
-
-@mcp.tool(
     name="ovirt_disk_attach",
     description=(
         "Attach an existing floating virtual disk to a virtual machine. "
@@ -880,29 +863,6 @@ def ovirt_disk_attach(
 ) -> VmDiskAttachmentResult:
     """Attach an existing disk to a virtual machine."""
     return attach_disk_tool(
-        name_or_id=name_or_id,
-        disk_id=disk_id,
-        interface=interface,
-        bootable=bootable,
-        active=active,
-        read_only=read_only,
-    )
-
-
-@mcp.tool(
-    name="ovirt_vm_disk_attach",
-    description="Attach an existing floating virtual disk to a virtual machine (alias to ovirt_disk_attach).",
-)
-def ovirt_vm_disk_attach(
-    name_or_id: str,
-    disk_id: str,
-    interface: str = "virtio",
-    bootable: bool = False,
-    active: bool = True,
-    read_only: bool = False,
-) -> VmDiskAttachmentResult:
-    """Attach an existing disk to a virtual machine."""
-    return attach_vm_disk_tool(
         name_or_id=name_or_id,
         disk_id=disk_id,
         interface=interface,
@@ -938,27 +898,6 @@ def ovirt_disk_detach(
 
 
 @mcp.tool(
-    name="ovirt_vm_disk_detach",
-    description="Detach a virtual disk from a virtual machine (alias to ovirt_disk_detach).",
-)
-def ovirt_vm_disk_detach(
-    name_or_id: str,
-    disk_id: str,
-    confirm: bool = False,
-    wait: bool = False,
-    timeout_seconds: int = 60,
-) -> VmDiskAttachmentResult:
-    """Detach a virtual disk from a virtual machine."""
-    return detach_vm_disk_tool(
-        name_or_id=name_or_id,
-        disk_id=disk_id,
-        confirm=confirm,
-        wait=wait,
-        timeout_seconds=timeout_seconds,
-    )
-
-
-@mcp.tool(
     name="ovirt_disk_create",
     description=(
         "Create a new virtual disk. If vm_name_or_id is provided, attaches the disk to that VM; "
@@ -985,37 +924,6 @@ def ovirt_disk_create(
         disk_name=disk_name,
         disk_format=disk_format,
         vm_name_or_id=vm_name_or_id,
-        interface=interface,
-        bootable=bootable,
-        active=active,
-        wait=wait,
-        timeout_seconds=timeout_seconds,
-    )
-
-
-@mcp.tool(
-    name="ovirt_vm_disk_create",
-    description="Create a new virtual disk and attach it directly to a virtual machine (alias to ovirt_disk_create).",
-)
-def ovirt_vm_disk_create(
-    name_or_id: str,
-    size_gb: int,
-    storage_domain: str,
-    disk_name: str | None = None,
-    disk_format: str = "cow",
-    interface: str = "virtio",
-    bootable: bool = False,
-    active: bool = True,
-    wait: bool = False,
-    timeout_seconds: int = 120,
-) -> VmDiskAttachmentResult:
-    """Create a new disk and attach it to a virtual machine."""
-    return create_vm_disk_tool(
-        name_or_id=name_or_id,
-        size_gb=size_gb,
-        storage_domain=storage_domain,
-        disk_name=disk_name,
-        disk_format=disk_format,
         interface=interface,
         bootable=bootable,
         active=active,
