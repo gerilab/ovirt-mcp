@@ -46,7 +46,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          pytest -v tests/unit
+          python -m pytest -v --tb=short tests/unit
 
   docker:
     name: Docker Build & Verification
