@@ -126,6 +126,14 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
    - [`ovirt_host_upgrade_check`](#103-ovirt_host_upgrade_check)
    - [`ovirt_host_upgrade`](#104-ovirt_host_upgrade)
    - [`ovirt_system_events`](#105-ovirt_system_events)
+   - [`ovirt_user_list`](#106-ovirt_user_list)
+   - [`ovirt_user_get`](#107-ovirt_user_get)
+   - [`ovirt_user_add`](#108-ovirt_user_add)
+   - [`ovirt_user_delete`](#109-ovirt_user_delete)
+   - [`ovirt_role_list`](#110-ovirt_role_list)
+   - [`ovirt_permission_list`](#111-ovirt_permission_list)
+   - [`ovirt_permission_add`](#112-ovirt_permission_add)
+   - [`ovirt_permission_remove`](#113-ovirt_permission_remove)
 7. [Connecting to AI MCP Clients](#connecting-to-ai-mcp-clients)
 8. [Testing & Quality Verification](#testing--quality-verification)
 9. [Troubleshooting & FAQ](#troubleshooting--faq)
@@ -280,12 +288,18 @@ oVirt and OLVM use an internal authentication provider that requires the profile
 ### Service Account Best Practices
 
 > [!IMPORTANT]
-> For production environments, **do not use full administrative superuser credentials**. Create a dedicated, restricted service account for the AI Agent:
+> For production environments, **do not use full administrative superuser credentials**. Enterprise best practice is provisioning a dedicated, restricted service account for the AI Agent:
 >
-> 1. In the oVirt/OLVM Administration Portal, navigate to **Administration** &rarr; **Configure** &rarr; **Roles**.
-> 2. For read-only monitoring: Assign the built-in `ReadOnlyAdmin` role to a new user `mcp-agent@internal`.
-> 3. For VM operations (start/stop/reboot): Assign the `UserVmManager` or `UserVmRunTimePermissions` role scoped specifically to the designated Cluster or Data Center.
-> 4. Use `mcp-agent@internal` in your `.env`.
+> 1. **Option A: Programmatically via MCP Tools:**
+>    - Register the service user:
+>      `ovirt_user_add(user_name="mcp-service", domain="internal-authz")`
+>    - Grant least-privilege role (e.g. `PowerUserRole` or `ReadOnlyAdmin`):
+>      `ovirt_permission_add(user_name_or_id="mcp-service@internal-authz", role_name_or_id="PowerUserRole", target_type="cluster", target_name_or_id="DefaultCluster")`
+> 2. **Option B: Via Administration Web Portal:**
+>    - In the oVirt/OLVM Administration Portal, navigate to **Administration** &rarr; **Configure** &rarr; **Roles**.
+>    - For read-only monitoring: Assign `ReadOnlyAdmin` role to `mcp-service@internal-authz`.
+>    - For VM operations (start/stop/reboot): Assign `UserVmManager` or `UserVmRunTimePermissions` scoped to the designated Cluster or Data Center.
+> 3. Set `OVIRT_USERNAME=mcp-service@internal-authz` and its password in your `.env`.
 
 ---
 
@@ -341,6 +355,9 @@ ovirt_<domain>_[<subresource>_]<action>
 - **`ovirt_storage_*`**: Storage domains and capacity management.
 - **`ovirt_disk_*`**: Standalone floating disks and volume operations.
 - **`ovirt_network_*`**: Virtual networks and vNIC profiles.
+- **`ovirt_user_*`**: User account registration, lookup, and deletion (`list`, `get`, `add`, `delete`).
+- **`ovirt_role_*`**: Authorization roles and privilege inspection (`list`).
+- **`ovirt_permission_*`**: Discrete permission grants and revocation across targets (`list`, `add`, `remove`).
 
 ---
 
@@ -2222,6 +2239,271 @@ Retrieves global audit log events, errors, warnings, alerts, and operational mes
 
 ---
 
+### 106. `ovirt_user_list`
+
+Lists user accounts registered in oVirt / OLVM across all authorization domains (e.g. `internal-authz`, Active Directory, LDAP, Keycloak). Supports filtering via standard oVirt search query expressions and pagination limits.
+
+- **Inputs:**
+  - `search` *(string, optional)*: oVirt search query expression (e.g. `'usrname = admin*'`).
+  - `max_results` *(int, optional, default: 100)*: Maximum number of users to retrieve.
+- **Outputs:** `list[UserSummary]`
+  - `id`: Unique UUID of the user.
+  - `name`: Display name or username.
+  - `user_name`: Full username including realm / domain (e.g. `'admin@internal-authz'`).
+  - `principal`: Principal username without realm (e.g. `'admin'`).
+  - `domain_name`: Authorization domain name (e.g. `'internal-authz'`).
+  - `email`: User email address, if configured.
+  - `department`: Department name, if configured.
+  - `logged_in`: Whether the user is currently authenticated and active.
+
+**Example Output:**
+```json
+[
+  {
+    "id": "05ff7a22-d131-11f0-a587-00505691ee8b",
+    "name": "admin",
+    "user_name": "admin@internal-authz",
+    "principal": "admin",
+    "domain_name": "internal-authz",
+    "email": "admin@example.com",
+    "department": null,
+    "logged_in": true
+  }
+]
+```
+
+---
+
+### 107. `ovirt_user_get`
+
+Retrieves comprehensive account information for a specific user, including assigned authorization roles and total discrete permission grants count.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Username (e.g. `'admin@internal-authz'`) or user UUID.
+- **Outputs:** `UserDetail` (inherits from `UserSummary`)
+  - `roles`: List of authorization role names assigned to this user (e.g. `['SuperUser', 'UserProfileEditor']`).
+  - `permissions_count`: Total number of discrete permission grants for this user.
+
+**Example Output:**
+```json
+{
+  "id": "05ff7a22-d131-11f0-a587-00505691ee8b",
+  "name": "admin",
+  "user_name": "admin@internal-authz",
+  "principal": "admin",
+  "domain_name": "internal-authz",
+  "email": "admin@example.com",
+  "department": null,
+  "logged_in": true,
+  "roles": ["SuperUser", "UserProfileEditor"],
+  "permissions_count": 19
+}
+```
+
+---
+
+### 108. `ovirt_user_add`
+
+Imports and registers a user from an external or internal authorization provider / directory service (e.g. `internal-authz`, LDAP, Active Directory, Keycloak) into the virtualization engine.
+
+> **Enterprise Best Practice:** Use this tool to provision dedicated, least-privilege MCP service accounts (e.g. `'mcp-service@internal-authz'`) rather than operating under unrestricted root administrator credentials.
+
+- **Inputs:**
+  - `user_name` *(string, required)*: Username in the authorization directory (e.g. `'mcp-service'` or `'mcp-service@internal-authz'`).
+  - `domain` *(string, required)*: Authorization domain or realm name (e.g. `'internal-authz'`).
+  - `principal` *(string, optional)*: Principal username without realm for Active Directory / UPN compatibility.
+- **Outputs:** `UserResult`
+  - `success`: `true` if imported successfully.
+  - `action`: `"add"`.
+  - `user_id`: UUID assigned to the registered user.
+  - `user_name`: Full normalized username.
+  - `message`: Outcome description.
+
+**Example Output:**
+```json
+{
+  "success": true,
+  "action": "add",
+  "user_id": "7a3e8110-3841-4cfa-9311-53e34b12aa01",
+  "user_name": "mcp-service@internal-authz",
+  "message": "User 'mcp-service@internal-authz' successfully registered into oVirt from domain 'internal-authz'."
+}
+```
+
+---
+
+### 109. `ovirt_user_delete`
+
+De-registers and removes a user account from the oVirt / OLVM virtualization engine.
+
+> **Safety & Lockout Guards:**
+> 1. **Safe Mode Enforcement:** Requires `confirm=True` when `MCP_SAFE_MODE=true`.
+> 2. **Lockout Protection:** Deleting primary administrator accounts (`admin@*`) is strictly blocked to prevent operator lockout from the virtualization management engine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Username or UUID of the user account to remove.
+  - `confirm` *(bool, optional, default: false)*: Explicit confirmation required in Safe Mode.
+- **Outputs:** `UserResult`
+  - `success`: `true` if removed.
+  - `action`: `"delete"`.
+  - `user_id`: UUID of the deleted user.
+  - `user_name`: Full username.
+  - `message`: Outcome description.
+
+**Example Output:**
+```json
+{
+  "success": true,
+  "action": "delete",
+  "user_id": "7a3e8110-3841-4cfa-9311-53e34b12aa01",
+  "user_name": "temp-user@internal-authz",
+  "message": "User 'temp-user@internal-authz' successfully removed from oVirt engine."
+}
+```
+
+---
+
+### 110. `ovirt_role_list`
+
+Lists authorization roles defined in the system (e.g. `SuperUser`, `DataCenterAdmin`, `ClusterAdmin`, `UserRole`, `PowerUserRole`). Allows filtering for administrative roles only or standard user roles only.
+
+- **Inputs:**
+  - `administrative` *(bool, optional)*: When `true`, returns only administrative roles; when `false`, returns only user roles; when omitted, returns all roles.
+- **Outputs:** `list[RoleSummary]`
+  - `id`: Role UUID.
+  - `name`: Role name.
+  - `description`: Human-readable summary of permissions.
+  - `administrative`: `true` if administrative privilege.
+  - `mutable`: Whether role permits can be modified in engine.
+
+**Example Output:**
+```json
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "SuperUser",
+    "description": "Roles management administrator",
+    "administrative": true,
+    "mutable": false
+  },
+  {
+    "id": "00000000-0000-0000-0001-000000000001",
+    "name": "UserRole",
+    "description": "User Role",
+    "administrative": false,
+    "mutable": false
+  }
+]
+```
+
+---
+
+### 111. `ovirt_permission_list`
+
+Lists authorization permission grants across the virtualization environment. Supports filtering by specific target user or role to inspect the current privilege topology.
+
+- **Inputs:**
+  - `user_name_or_id` *(string, optional)*: Filter permissions assigned to a specific user.
+  - `role_name_or_id` *(string, optional)*: Filter permissions for a specific role.
+- **Outputs:** `list[PermissionSummary]`
+  - `id`: Permission grant UUID.
+  - `user_id`: Target user UUID.
+  - `user_name`: Target user name.
+  - `role_id`: Role UUID.
+  - `role_name`: Role name.
+  - `target_type`: Target entity type (`system`, `data_center`, `cluster`, `vm`, `storage_domain`).
+  - `target_id`: Target entity UUID (null for system-wide).
+  - `target_name`: Target entity display name (null for system-wide).
+
+**Example Output:**
+```json
+[
+  {
+    "id": "583901b2-1029-4d22-94ea-62881234abcd",
+    "user_id": "05ff7a22-d131-11f0-a587-00505691ee8b",
+    "user_name": "admin@internal-authz",
+    "role_id": "00000000-0000-0000-0000-000000000001",
+    "role_name": "SuperUser",
+    "target_type": "system",
+    "target_id": null,
+    "target_name": null
+  }
+]
+```
+
+---
+
+### 112. `ovirt_permission_add`
+
+Grants an authorization role to a user on a target entity or system-wide.
+
+> **Enterprise Security Matrix:** Granting high-privilege administrative roles (`SuperUser`, `DataCenterAdmin`, `ClusterAdmin`) modifies the hypervisor security posture and requires `confirm=True` in Safe Mode.
+
+- **Inputs:**
+  - `user_name_or_id` *(string, required)*: Username or UUID of the recipient user.
+  - `role_name_or_id` *(string, required)*: Role name (e.g. `'PowerUserRole'`, `'UserRole'`, `'SuperUser'`) or UUID.
+  - `target_type` *(string, optional, default: 'system')*: Target entity type: `'system'`, `'data_center'`, `'cluster'`, `'vm'`, or `'storage_domain'`.
+  - `target_name_or_id` *(string, optional)*: Target entity name or UUID (required when `target_type != 'system'`).
+  - `confirm` *(bool, optional, default: false)*: Confirmation flag required in Safe Mode when assigning administrative roles.
+- **Outputs:** `PermissionResult`
+  - `success`: `true` if granted.
+  - `action`: `"add"`.
+  - `permission_id`: UUID of the newly granted permission.
+  - `user_name`: Target username.
+  - `role_name`: Granted role name.
+  - `target_type`: Entity type.
+  - `target_name`: Target entity name.
+  - `message`: Outcome description.
+
+**Example Output:**
+```json
+{
+  "success": true,
+  "action": "add",
+  "permission_id": "bb401290-7819-4821-b012-990011223344",
+  "user_name": "mcp-service@internal-authz",
+  "role_name": "PowerUserRole",
+  "target_type": "vm",
+  "target_name": "testvm001",
+  "message": "Role 'PowerUserRole' successfully granted to user 'mcp-service@internal-authz' on vm 'testvm001'."
+}
+```
+
+---
+
+### 113. `ovirt_permission_remove`
+
+Revokes and removes an authorization permission grant from oVirt / OLVM by its permission UUID.
+
+> **Safe Mode Protection:** Revoking permissions is a destructive security action and requires `confirm=True` in Safe Mode.
+
+- **Inputs:**
+  - `permission_id` *(string, required)*: UUID of the permission grant to revoke.
+  - `confirm` *(bool, optional, default: false)*: Confirmation flag required in Safe Mode.
+- **Outputs:** `PermissionResult`
+  - `success`: `true` if revoked.
+  - `action`: `"remove"`.
+  - `permission_id`: Revoked permission UUID.
+  - `user_name`: Username affected.
+  - `role_name`: Revoked role name.
+  - `message`: Outcome description.
+
+**Example Output:**
+```json
+{
+  "success": true,
+  "action": "remove",
+  "permission_id": "bb401290-7819-4821-b012-990011223344",
+  "user_name": "mcp-service@internal-authz",
+  "role_name": "PowerUserRole",
+  "target_type": "unknown",
+  "target_name": null,
+  "message": "Permission grant 'bb401290-7819-4821-b012-990011223344' (role: 'PowerUserRole', user: 'mcp-service@internal-authz') successfully revoked."
+}
+```
+
+---
+
 ## Connecting to AI MCP Clients
 
 `ovirt-mcp` supports two primary deployment models:
@@ -2268,7 +2550,7 @@ Add the `ovirt` server configuration:
   }
 }
 ```
-Restart Claude Desktop. The hammer icon will show all 107 oVirt tools loaded!
+Restart Claude Desktop. The hammer icon will show all 116 oVirt tools loaded!
 
 ---
 

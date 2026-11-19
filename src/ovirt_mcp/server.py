@@ -86,6 +86,14 @@ from ovirt_mcp.models.template import (
     TemplateResult,
     TemplateSummary,
 )
+from ovirt_mcp.models.user import (
+    PermissionResult,
+    PermissionSummary,
+    RoleSummary,
+    UserDetail,
+    UserResult,
+    UserSummary,
+)
 from ovirt_mcp.models.vm import (
     VmCompactDetail,
     VmCreateResult,
@@ -259,6 +267,16 @@ from ovirt_mcp.tools.templates import (
     delete_template_tool,
     get_template_tool,
     list_templates_tool,
+)
+from ovirt_mcp.tools.users import (
+    add_permission_tool,
+    add_user_tool,
+    delete_user_tool,
+    get_user_tool,
+    list_permissions_tool,
+    list_roles_tool,
+    list_users_tool,
+    remove_permission_tool,
 )
 from ovirt_mcp.tools.vms import (
     commit_vm_snapshot_tool,
@@ -2393,6 +2411,141 @@ def ovirt_system_events(
         search=search,
         from_event_id=from_event_id,
     )
+
+
+# ── User and Authorization Tools (Tools 106-113) ─────────────────────────────
+
+
+@mcp.tool(
+    name="ovirt_user_list",
+    description=(
+        "List user accounts registered in oVirt / OLVM across all authorization domains. "
+        "Supports filtering via search query (e.g. 'usrname = admin*') and max_results limit."
+    ),
+)
+def ovirt_user_list(
+    search: str | None = None,
+    max_results: int = 100,
+) -> list[UserSummary]:
+    """List users registered in oVirt / OLVM."""
+    return list_users_tool(search=search, max_results=max_results)
+
+
+@mcp.tool(
+    name="ovirt_user_get",
+    description=(
+        "Retrieve detailed account information for a specific user, including assigned authorization "
+        "roles and total permission grants count. Accepts username (e.g. 'admin@internal-authz') or UUID."
+    ),
+)
+def ovirt_user_get(
+    name_or_id: str,
+) -> UserDetail:
+    """Retrieve detailed user account information."""
+    return get_user_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_user_add",
+    description=(
+        "Import and register a user from an authorization domain/realm (e.g. 'internal-authz', LDAP, AD) "
+        "into the virtualization engine. Recommended enterprise practice for provisioning dedicated "
+        "least-privilege MCP service accounts (e.g. 'mcp-service')."
+    ),
+)
+def ovirt_user_add(
+    user_name: str,
+    domain: str,
+    principal: str | None = None,
+) -> UserResult:
+    """Register a new user from an authorization domain into oVirt."""
+    return add_user_tool(user_name=user_name, domain=domain, principal=principal)
+
+
+@mcp.tool(
+    name="ovirt_user_delete",
+    description=(
+        "De-register and remove a user account from oVirt / OLVM. "
+        "Protected by Safe Mode (confirm=True required) and lockout protection (rejects deleting admin accounts)."
+    ),
+)
+def ovirt_user_delete(
+    name_or_id: str,
+    confirm: bool = False,
+) -> UserResult:
+    """Remove a user account from oVirt / OLVM."""
+    return delete_user_tool(name_or_id=name_or_id, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_role_list",
+    description=(
+        "List authorization roles defined in oVirt / OLVM (e.g. SuperUser, DataCenterAdmin, ClusterAdmin, "
+        "UserRole, PowerUserRole). Can filter by administrative roles only or user roles only."
+    ),
+)
+def ovirt_role_list(
+    administrative: bool | None = None,
+) -> list[RoleSummary]:
+    """List authorization roles."""
+    return list_roles_tool(administrative=administrative)
+
+
+@mcp.tool(
+    name="ovirt_permission_list",
+    description=(
+        "List authorization permissions granted to users across the virtualization environment. "
+        "Supports filtering by specific user (username or UUID) and/or role (role name or UUID)."
+    ),
+)
+def ovirt_permission_list(
+    user_name_or_id: str | None = None,
+    role_name_or_id: str | None = None,
+) -> list[PermissionSummary]:
+    """List authorization permissions across the system or for a specific user/role."""
+    return list_permissions_tool(
+        user_name_or_id=user_name_or_id,
+        role_name_or_id=role_name_or_id,
+    )
+
+
+@mcp.tool(
+    name="ovirt_permission_add",
+    description=(
+        "Grant an authorization role to a user on a target entity ('system', 'data_center', 'cluster', "
+        "'vm', 'storage_domain'). Granting administrative roles requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_permission_add(
+    user_name_or_id: str,
+    role_name_or_id: str,
+    target_type: str = "system",
+    target_name_or_id: str | None = None,
+    confirm: bool = False,
+) -> PermissionResult:
+    """Grant an authorization role to a user on a target entity or system-wide."""
+    return add_permission_tool(
+        user_name_or_id=user_name_or_id,
+        role_name_or_id=role_name_or_id,
+        target_type=target_type,
+        target_name_or_id=target_name_or_id,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_permission_remove",
+    description=(
+        "Revoke and delete an authorization permission grant from oVirt / OLVM by its permission UUID. "
+        "Requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_permission_remove(
+    permission_id: str,
+    confirm: bool = False,
+) -> PermissionResult:
+    """Revoke an authorization permission grant."""
+    return remove_permission_tool(permission_id=permission_id, confirm=confirm)
 
 
 def main() -> None:
