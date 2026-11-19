@@ -32,7 +32,7 @@ from ovirt_mcp.models.disk import (
     VmDiskAttachmentInfo,
     VmDiskAttachmentResult,
 )
-from ovirt_mcp.models.event import VmEvent
+from ovirt_mcp.models.event import SystemEvent, VmEvent
 from ovirt_mcp.models.host import (
     HostDetail,
     HostDeviceInfo,
@@ -163,7 +163,7 @@ from ovirt_mcp.tools.disks import (
     resize_disk_tool,
     sparsify_disk_tool,
 )
-from ovirt_mcp.tools.events import list_vm_events_tool
+from ovirt_mcp.tools.events import list_system_events_tool, list_vm_events_tool
 from ovirt_mcp.tools.host_bonding import (
     create_host_bond_tool,
     delete_host_bond_tool,
@@ -2368,6 +2368,30 @@ def ovirt_host_bond_delete(
         host_name_or_id=host_name_or_id,
         bond_name=bond_name,
         confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_system_events",
+    description=(
+        "Retrieve global audit log events, errors, alerts, and operational messages across the "
+        "entire virtualization environment (hosts, VMs, storage domains, clusters). "
+        "Supports filtering by severity ('alert', 'error', 'warning', 'normal'), search query, "
+        "and pagination with max_events (1-500) and from_event_id."
+    ),
+)
+def ovirt_system_events(
+    max_events: int = 50,
+    severity: str | None = None,
+    search: str | None = None,
+    from_event_id: int | None = None,
+) -> list[SystemEvent]:
+    """Retrieve global system audit events and diagnostic logs."""
+    return list_system_events_tool(
+        max_events=max_events,
+        severity=severity,
+        search=search,
+        from_event_id=from_event_id,
     )
 
 

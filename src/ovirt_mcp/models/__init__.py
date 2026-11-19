@@ -24,7 +24,7 @@ from .disk import (
     VmDiskAttachmentInfo,
     VmDiskAttachmentResult,
 )
-from .event import VmEvent
+from .event import SystemEvent, VmEvent
 from .host import (
     HostDetail,
     HostDeviceInfo,
@@ -149,6 +149,7 @@ __all__ = [
     "StorageDomainDetail",
     "StorageDomainResult",
     "StorageDomainSummary",
+    "SystemEvent",
     "TagAssignmentResult",
     "TagResult",
     "TagSummary",

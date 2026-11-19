@@ -4,7 +4,8 @@ import logging
 from typing import Any
 
 from ovirt_mcp.client import get_client
-from ovirt_mcp.models.event import VmEvent
+from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtValidationError
+from ovirt_mcp.models.event import SystemEvent, VmEvent
 
 logger = logging.getLogger(__name__)
 
@@ -64,3 +65,94 @@ def list_vm_events_tool(
     sdk_events = events_service.list(search=search_query, max=max_events)
 
     return [extract_vm_event(e) for e in sdk_events]
+
+
+def extract_system_event(event: Any) -> SystemEvent:
+    """Extract a typed SystemEvent model from an oVirt SDK Event object."""
+    event_id = str(getattr(event, "id", ""))
+    code = getattr(event, "code", None)
+
+    sev_obj = getattr(event, "severity", None)
+    severity_str = getattr(sev_obj, "value", str(sev_obj or "normal")).lower()
+
+    time_str = str(getattr(event, "time", ""))
+    description = str(getattr(event, "description", ""))
+
+    vm_obj = getattr(event, "vm", None)
+    vm_name = getattr(vm_obj, "name", None) if vm_obj else None
+
+    host_obj = getattr(event, "host", None)
+    host_name = getattr(host_obj, "name", None) if host_obj else None
+
+    cluster_obj = getattr(event, "cluster", None)
+    cluster_name = getattr(cluster_obj, "name", None) if cluster_obj else None
+
+    sd_obj = getattr(event, "storage_domain", None)
+    sd_name = getattr(sd_obj, "name", None) if sd_obj else None
+
+    user_name = getattr(event, "user_name", None)
+    correlation_id = getattr(event, "correlation_id", None)
+
+    return SystemEvent(
+        id=event_id,
+        code=code,
+        severity=severity_str,
+        time=time_str,
+        description=description,
+        vm_name=vm_name,
+        host_name=host_name,
+        cluster_name=cluster_name,
+        storage_domain_name=sd_name,
+        user_name=user_name,
+        correlation_id=correlation_id,
+    )
+
+
+def list_system_events_tool(
+    max_events: int = 50,
+    severity: str | None = None,
+    search: str | None = None,
+    from_event_id: int | None = None,
+) -> list[SystemEvent]:
+    """Retrieve global system audit events, logs, and failure causes across the entire environment.
+
+    Args:
+        max_events: Maximum number of events to return (default: 50, max: 500).
+        severity: Optional severity filter ('normal', 'warning', 'error', 'alert').
+        search: Optional search query string (e.g. 'type = ...', keywords, or entity filters).
+        from_event_id: Optional event ID to fetch events starting after this sequence ID.
+
+    Returns:
+        List of SystemEvent objects matching the criteria.
+    """
+    if max_events < 1 or max_events > 500:
+        raise OvirtValidationError("max_events must be between 1 and 500.")
+
+    client = get_client()
+    connection = client.get_connection()
+    events_service = connection.system_service().events_service()
+
+    query_parts: list[str] = []
+    if severity:
+        clean_sev = severity.strip().lower().replace('"', "")
+        query_parts.append(f"severity = {clean_sev}")
+    if search:
+        query_parts.append(search.strip())
+
+    search_query = " and ".join(query_parts) if query_parts else None
+
+    kwargs: dict[str, Any] = {"max": max_events}
+    if search_query:
+        kwargs["search"] = search_query
+    if from_event_id is not None:
+        kwargs["from_"] = from_event_id
+
+    try:
+        events = events_service.list(**kwargs)
+    except Exception as exc:
+        raise OvirtMCPError(
+            f"Failed to retrieve system events: {exc}",
+            details={"max_events": max_events, "search": search_query, "error": str(exc)},
+        ) from exc
+
+    return [extract_system_event(e) for e in events]

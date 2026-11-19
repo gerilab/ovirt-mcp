@@ -125,6 +125,7 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
    - [`ovirt_user_tag_unassign`](#102-ovirt_user_tag_unassign)
    - [`ovirt_host_upgrade_check`](#103-ovirt_host_upgrade_check)
    - [`ovirt_host_upgrade`](#104-ovirt_host_upgrade)
+   - [`ovirt_system_events`](#105-ovirt_system_events)
 7. [Connecting to AI MCP Clients](#connecting-to-ai-mcp-clients)
 8. [Testing & Quality Verification](#testing--quality-verification)
 9. [Troubleshooting & FAQ](#troubleshooting--faq)
@@ -2162,6 +2163,62 @@ Upgrades operating system packages and VDSM on a hypervisor host using the oVirt
   - `status`: Current host status (`"maintenance"`).
   - `reboot_requested`: Whether automatic post-upgrade reboot is requested.
   - `message`: Detailed execution status.
+
+---
+
+### 105. `ovirt_system_events`
+
+Retrieves global audit log events, errors, warnings, alerts, and operational messages across the entire virtualization environment (hosts, VMs, storage domains, clusters). Supports filtering by severity level (`'alert'`, `'error'`, `'warning'`, `'normal'`), custom search queries, and pagination with `max_events` and `from_event_id`.
+
+- **Inputs:**
+  - `max_events` *(int, optional, default: 50)*: Maximum number of events to return (1 to 500).
+  - `severity` *(string, optional)*: Filter by severity level (`'normal'`, `'warning'`, `'error'`, `'alert'`).
+  - `search` *(string, optional)*: Custom oVirt search expression (e.g. `'type = ...'`, keywords, or entity filters).
+  - `from_event_id` *(int, optional)*: Sequence event ID to fetch events starting after this event.
+- **Outputs:** `list[SystemEvent]`
+  - `id`: Unique event sequence ID.
+  - `code`: Internal numeric event code.
+  - `severity`: Severity level (`normal`, `warning`, `error`, `alert`).
+  - `time`: Timestamp when the event occurred in ISO format.
+  - `description`: Human-readable audit message or diagnostic explanation.
+  - `vm_name`: Affected virtual machine name, if applicable.
+  - `host_name`: Affected hypervisor host name, if applicable.
+  - `cluster_name`: Affected cluster name, if applicable.
+  - `storage_domain_name`: Affected storage domain name, if applicable.
+  - `user_name`: Username who initiated or triggered the action, if applicable.
+  - `correlation_id`: Operation tracking correlation identifier.
+
+**Example Output:**
+```json
+[
+  {
+    "id": "3904",
+    "code": 30,
+    "severity": "normal",
+    "time": "2026-11-19 10:34:10.135000+00:00",
+    "description": "User admin@internal logged in from 192.0.2.20.",
+    "vm_name": null,
+    "host_name": null,
+    "cluster_name": null,
+    "storage_domain_name": null,
+    "user_name": "admin@internal",
+    "correlation_id": null
+  },
+  {
+    "id": "3903",
+    "code": 9920,
+    "severity": "alert",
+    "time": "2026-11-19 07:04:40.561000+00:00",
+    "description": "There is no full backup available, please run engine-backup to prevent data loss.",
+    "vm_name": null,
+    "host_name": null,
+    "cluster_name": null,
+    "storage_domain_name": null,
+    "user_name": null,
+    "correlation_id": null
+  }
+]
+```
 
 ---
 
