@@ -51,4 +51,3 @@ def test_require_destructive_confirmation_blocked_in_read_only_mode_even_if_conf
     with pytest.raises(OvirtPermissionError) as exc_info:
         require_destructive_confirmation("vm_delete", confirmed=True)
     assert "read-only mode" in str(exc_info.value)
-
