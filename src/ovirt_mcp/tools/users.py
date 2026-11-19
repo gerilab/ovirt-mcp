@@ -10,6 +10,7 @@ from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtValidationError
 from ovirt_mcp.models.user import (
     PermissionResult,
     PermissionSummary,
+    RoleResult,
     RoleSummary,
     UserDetail,
     UserResult,
@@ -272,6 +273,136 @@ def list_roles_tool(
         )
 
     return results
+
+
+def add_role_tool(
+    name: str,
+    description: str | None = None,
+    administrative: bool = False,
+    permits: list[str] | None = None,
+    confirm: bool = False,
+) -> RoleResult:
+    """Create a new custom authorization role with granular operational permits.
+
+    Enterprise Governance:
+      Enables creating customized, least-privilege security roles (e.g. 'BackupOperator',
+      'DevOpsEngineer') rather than relying exclusively on broad built-in roles.
+
+    Args:
+        name: Unique role name.
+        description: Optional role description explaining its purpose.
+        administrative: True for an administrative role, False for a regular user role.
+        permits: Optional list of permit names to assign (e.g. ['create_vm', 'delete_vm', 'attach_disk']).
+        confirm: Confirmation flag required in safe mode if administrative=True.
+
+    Returns:
+        RoleResult with outcome details.
+    """
+    clean_name = name.strip()
+    if not clean_name:
+        raise OvirtValidationError("Role name cannot be empty.")
+
+    if administrative:
+        require_destructive_confirmation(
+            f"create administrative role '{clean_name}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("add_role")
+
+    client = get_client()
+    system_service = client.get_connection().system_service()
+    roles_service = system_service.roles_service()
+
+    sdk_permits: list[sdk_types.Permit] = []
+    if permits:
+        for p in permits:
+            clean_p = p.strip()
+            if clean_p:
+                sdk_permits.append(sdk_types.Permit(name=clean_p))
+
+    role_spec = sdk_types.Role(
+        name=clean_name,
+        description=description.strip() if description else None,
+        administrative=administrative,
+    )
+    if sdk_permits:
+        role_spec.permits = sdk_permits
+
+    try:
+        new_role = roles_service.add(role_spec)
+        role_id = str(new_role.id)
+    except Exception as exc:
+        audit_log(
+            "add_role",
+            clean_name,
+            {"administrative": administrative, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to create role '{clean_name}': {exc}") from exc
+
+    audit_log(
+        "add_role",
+        clean_name,
+        {"role_id": role_id, "administrative": administrative},
+        "SUCCESS",
+    )
+    return RoleResult(
+        success=True,
+        action="add",
+        role_id=role_id,
+        role_name=clean_name,
+        message=f"Authorization role '{clean_name}' successfully created.",
+    )
+
+
+def delete_role_tool(
+    name_or_id: str,
+    confirm: bool = False,
+) -> RoleResult:
+    """Delete a custom authorization role from oVirt / OLVM.
+
+    Safety Guards:
+      1. Safe-Mode Protection: Requires confirm=True when MCP_SAFE_MODE=true.
+      2. Immutability Guard: Strictly blocks deleting non-mutable built-in system roles (e.g. 'SuperUser', 'UserRole').
+
+    Args:
+        name_or_id: Role name or UUID to delete.
+        confirm: Confirmation flag required in safe mode.
+
+    Returns:
+        RoleResult with outcome details.
+    """
+    require_destructive_confirmation(f"delete authorization role '{name_or_id}'", confirmed=confirm)
+
+    client = get_client()
+    system_service = client.get_connection().system_service()
+    roles_service = system_service.roles_service()
+
+    role = client.find_resource_by_id_or_name(roles_service, name_or_id, "role")
+    role_id = str(role.id)
+    role_name = str(role.name)
+
+    # Immutability Guard
+    if not getattr(role, "mutable", True):
+        raise OvirtValidationError(
+            f"Safety Guard: Role '{role_name}' is a built-in immutable system role and cannot be deleted.",
+            details={"role_id": role_id, "role_name": role_name},
+        )
+
+    try:
+        roles_service.role_service(role_id).remove()
+    except Exception as exc:
+        audit_log("delete_role", role_name, {"role_id": role_id, "error": str(exc)}, "FAILED")
+        raise OvirtMCPError(f"Failed to delete role '{role_name}': {exc}") from exc
+
+    audit_log("delete_role", role_name, {"role_id": role_id}, "SUCCESS")
+    return RoleResult(
+        success=True,
+        action="delete",
+        role_id=role_id,
+        role_name=role_name,
+        message=f"Authorization role '{role_name}' successfully removed from oVirt engine.",
+    )
 
 
 def list_permissions_tool(

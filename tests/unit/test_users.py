@@ -10,6 +10,7 @@ from ovirt_mcp.config import OvirtConfig
 from ovirt_mcp.models.user import (
     PermissionResult,
     PermissionSummary,
+    RoleResult,
     UserDetail,
     UserResult,
     UserSummary,
@@ -17,7 +18,9 @@ from ovirt_mcp.models.user import (
 from ovirt_mcp.tools.users import (
     _extract_user_summary,
     add_permission_tool,
+    add_role_tool,
     add_user_tool,
+    delete_role_tool,
     delete_user_tool,
     get_user_tool,
     list_permissions_tool,
@@ -499,3 +502,114 @@ def test_remove_permission_tool_success() -> None:
     assert res.action == "remove"
     assert res.permission_id == "perm-1234"
     mock_perm_svc.remove.assert_called_once()
+
+
+def test_add_role_tool_user_role_success() -> None:
+    """Test add_role_tool creates a regular custom role with permits."""
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_sys = MagicMock()
+    mock_roles_svc = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_conn.system_service.return_value = mock_sys
+    mock_sys.roles_service.return_value = mock_roles_svc
+
+    mock_created = MagicMock()
+    mock_created.id = "new-role-uuid-1"
+    mock_roles_svc.add.return_value = mock_created
+
+    with patch("ovirt_mcp.tools.users.get_client", return_value=mock_client):
+        res = add_role_tool(
+            name="DevOpsOperator",
+            description="Role for DevOps VM operators",
+            administrative=False,
+            permits=["create_vm", "delete_vm"],
+        )
+
+    assert isinstance(res, RoleResult)
+    assert res.success is True
+    assert res.role_name == "DevOpsOperator"
+    assert res.role_id == "new-role-uuid-1"
+    mock_roles_svc.add.assert_called_once()
+
+
+def test_add_role_tool_admin_safe_mode() -> None:
+    """Test add_role_tool requires confirm=True when administrative=True in Safe Mode."""
+    with (
+        patch("ovirt_mcp.tools.guards.get_config", return_value=_safe_mode_config(True)),
+        pytest.raises(OvirtValidationError, match="explicitly supply confirm=True"),
+    ):
+        add_role_tool(
+            name="CustomAdmin",
+            administrative=True,
+            confirm=False,
+        )
+
+
+def test_add_role_tool_empty_name() -> None:
+    """Test add_role_tool rejects empty role name."""
+    with pytest.raises(OvirtValidationError, match="Role name cannot be empty"):
+        add_role_tool(name="   ")
+
+
+def test_delete_role_tool_safe_mode() -> None:
+    """Test delete_role_tool enforces Safe Mode confirm=True."""
+    with (
+        patch("ovirt_mcp.tools.guards.get_config", return_value=_safe_mode_config(True)),
+        pytest.raises(OvirtValidationError, match="explicitly supply confirm=True"),
+    ):
+        delete_role_tool("CustomRole", confirm=False)
+
+
+def test_delete_role_tool_immutable_guard() -> None:
+    """Test delete_role_tool blocks deleting built-in immutable system roles."""
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_sys = MagicMock()
+    mock_roles_svc = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_conn.system_service.return_value = mock_sys
+    mock_sys.roles_service.return_value = mock_roles_svc
+
+    mock_builtin_role = MagicMock(id="super-uuid", administrative=True, mutable=False)
+    mock_builtin_role.name = "SuperUser"
+    mock_client.find_resource_by_id_or_name.return_value = mock_builtin_role
+
+    with (
+        patch("ovirt_mcp.tools.guards.get_config", return_value=_safe_mode_config(True)),
+        patch("ovirt_mcp.tools.users.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError, match="built-in immutable system role"),
+    ):
+        delete_role_tool("SuperUser", confirm=True)
+
+
+def test_delete_role_tool_success() -> None:
+    """Test delete_role_tool removes mutable custom role when confirmed."""
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_sys = MagicMock()
+    mock_roles_svc = MagicMock()
+    mock_role_svc = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_conn.system_service.return_value = mock_sys
+    mock_sys.roles_service.return_value = mock_roles_svc
+    mock_roles_svc.role_service.return_value = mock_role_svc
+
+    mock_custom_role = MagicMock(id="custom-role-id", administrative=False, mutable=True)
+    mock_custom_role.name = "DevOpsOperator"
+    mock_client.find_resource_by_id_or_name.return_value = mock_custom_role
+
+    with (
+        patch("ovirt_mcp.tools.guards.get_config", return_value=_safe_mode_config(True)),
+        patch("ovirt_mcp.tools.users.get_client", return_value=mock_client),
+    ):
+        res = delete_role_tool("DevOpsOperator", confirm=True)
+
+    assert isinstance(res, RoleResult)
+    assert res.success is True
+    assert res.action == "delete"
+    assert res.role_name == "DevOpsOperator"
+    mock_role_svc.remove.assert_called_once()

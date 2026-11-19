@@ -8,6 +8,11 @@ from .affinity import (
     AffinityRuleConfig,
     EntityLabelResult,
 )
+from .backup import (
+    BackupOperationResult,
+    VmBackupInfo,
+    VmCheckpointInfo,
+)
 from .compute import (
     VmConsoleTicket,
     VmGraphicsConsoleInfo,
@@ -48,6 +53,7 @@ from .host_network import (
     HostNetworkSetupResult,
 )
 from .logical_network import (
+    LogicalNetworkDetail,
     LogicalNetworkResult,
     LogicalNetworkSummary,
 )
@@ -87,6 +93,7 @@ from .template import (
 from .user import (
     PermissionResult,
     PermissionSummary,
+    RoleResult,
     RoleSummary,
     UserDetail,
     UserResult,
@@ -115,6 +122,11 @@ from .vm import (
     VmSnapshotResult,
     VmSummary,
 )
+from .vm_pool import (
+    VmPoolDetail,
+    VmPoolResult,
+    VmPoolSummary,
+)
 
 __all__ = [
     "AffinityGroupInfo",
@@ -122,6 +134,7 @@ __all__ = [
     "AffinityLabelInfo",
     "AffinityLabelResult",
     "AffinityRuleConfig",
+    "BackupOperationResult",
     "DataCenterDetail",
     "DataCenterSummary",
     "DiskDetail",
@@ -147,6 +160,7 @@ __all__ = [
     "HostUpgradeCheckResult",
     "HostUpgradeResult",
     "IsoFileInfo",
+    "LogicalNetworkDetail",
     "LogicalNetworkResult",
     "LogicalNetworkSummary",
     "PermissionResult",
@@ -156,6 +170,7 @@ __all__ = [
     "QuotaResult",
     "QuotaStorageLimit",
     "QuotaSummary",
+    "RoleResult",
     "RoleSummary",
     "StorageDomainDetail",
     "StorageDomainResult",
@@ -171,8 +186,10 @@ __all__ = [
     "UserDetail",
     "UserResult",
     "UserSummary",
+    "VmBackupInfo",
     "VmCdromInfo",
     "VmCdromResult",
+    "VmCheckpointInfo",
     "VmCompactDetail",
     "VmConsoleTicket",
     "VmCpuDetails",
@@ -198,6 +215,9 @@ __all__ = [
     "VmNicResult",
     "VmPinResult",
     "VmPlacementAndAffinity",
+    "VmPoolDetail",
+    "VmPoolResult",
+    "VmPoolSummary",
     "VmSnapshotInfo",
     "VmSnapshotResult",
     "VmSummary",

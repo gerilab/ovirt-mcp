@@ -1,6 +1,7 @@
 """Connection management and helper functions for oVirt and OLVM SDK."""
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -79,35 +80,110 @@ class OvirtClient:
         return None
 
     def get_connection(self) -> sdk.Connection:
-        """Return the active SDK connection or create a new one."""
+        """Return the active SDK connection or create a new one with automatic retry.
+
+        If the engine is restarting or temporarily unreachable, retries with exponential backoff
+        up to `ovirt_max_retries` (default: 3 attempts).
+        """
         if self._connection is not None:
             return self._connection
 
         ca_file = self._resolve_ca_certificate()
         insecure = self.config.ovirt_insecure or (ca_file is None)
+        max_retries = max(1, self.config.ovirt_max_retries)
+        last_exc: Exception | None = None
 
-        try:
-            logger.info(
-                "Connecting to oVirt/OLVM at %s (insecure=%s, ca_file=%s)",
-                self.config.sanitized_url(),
-                insecure,
-                ca_file,
-            )
-            self._connection = sdk.Connection(
-                url=self.config.sanitized_url(),
-                username=self.config.ovirt_username,
-                password=self.config.ovirt_password.get_secret_value(),
-                ca_file=ca_file,
-                insecure=insecure,
-                timeout=self.config.ovirt_timeout,
-            )
-            return self._connection
-        except sdk.AuthError as exc:
-            logger.error("Authentication failed for user %s: %s", self.config.ovirt_username, exc)
-            raise OvirtAuthError(f"Authentication failed: {exc}") from exc
-        except Exception as exc:
-            logger.error("Connection to oVirt failed: %s", exc)
-            raise OvirtConnectionError(f"Failed to connect to oVirt/OLVM: {exc}") from exc
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(
+                    "Connecting to oVirt/OLVM at %s (attempt %d/%d, insecure=%s, ca_file=%s)",
+                    self.config.sanitized_url(),
+                    attempt,
+                    max_retries,
+                    insecure,
+                    ca_file,
+                )
+                conn = sdk.Connection(
+                    url=self.config.sanitized_url(),
+                    username=self.config.ovirt_username,
+                    password=self.config.ovirt_password.get_secret_value(),
+                    ca_file=ca_file,
+                    insecure=insecure,
+                    timeout=self.config.ovirt_timeout,
+                )
+                self._connection = conn
+                return self._connection
+            except sdk.AuthError as exc:
+                logger.error(
+                    "Authentication failed for user %s: %s", self.config.ovirt_username, exc
+                )
+                raise OvirtAuthError(f"Authentication failed: {exc}") from exc
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "Connection attempt %d/%d to oVirt failed: %s. Retrying in %ds...",
+                    attempt,
+                    max_retries,
+                    exc,
+                    attempt * 2,
+                )
+                if attempt < max_retries:
+                    time.sleep(attempt * 2)
+
+        logger.error("All %d connection attempts to oVirt failed: %s", max_retries, last_exc)
+        raise OvirtConnectionError(
+            f"Failed to connect to oVirt/OLVM after {max_retries} attempts: {last_exc}"
+        ) from last_exc
+
+    def execute_with_retry(
+        self,
+        operation_name: str,
+        func: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Execute an oVirt API operation with automatic retry on transient network/engine restart errors."""
+        max_retries = max(1, self.config.ovirt_max_retries)
+        last_exc: Exception | None = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+            except (sdk.AuthError, OvirtAuthError):
+                raise
+            except Exception as exc:
+                last_exc = exc
+                err_str = str(exc).lower()
+                is_transient = any(
+                    sig in err_str
+                    for sig in (
+                        "503",
+                        "502",
+                        "connection refused",
+                        "timeout",
+                        "timed out",
+                        "broken pipe",
+                        "reset by peer",
+                    )
+                )
+                if not is_transient or attempt >= max_retries:
+                    break
+
+                backoff = attempt * 2
+                logger.warning(
+                    "Operation '%s' failed due to transient engine error: %s (attempt %d/%d). Retrying in %ds...",
+                    operation_name,
+                    exc,
+                    attempt,
+                    max_retries,
+                    backoff,
+                )
+                time.sleep(backoff)
+                # Invalidate stale connection so next attempt reconnects cleanly
+                self.close()
+
+        if last_exc:
+            raise last_exc
 
     def test_connection(self) -> dict[str, Any]:
         """Test the connection and return engine system information."""
@@ -151,7 +227,7 @@ class OvirtClient:
         self,
         service: Any,
         identifier: str,
-        resource_type_name: str,
+        resource_type_name: str = "resource",
     ) -> Any:
         """Find a resource by UUID or by exact name search.
 
@@ -159,6 +235,10 @@ class OvirtClient:
         """
         # 1. Try finding by direct UUID get
         single_service_fn = getattr(service, f"{resource_type_name}_service", None)
+        if single_service_fn is None and resource_type_name in ("vm_pool", "pool"):
+            single_service_fn = getattr(service, "pool_service", None) or getattr(
+                service, "vm_pool_service", None
+            )
         if single_service_fn:
             try:
                 item_service = single_service_fn(identifier)

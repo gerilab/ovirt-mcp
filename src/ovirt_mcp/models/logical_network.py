@@ -18,6 +18,27 @@ class LogicalNetworkSummary(BaseModel):
     status: str = Field(default="operational", description="Network operational status")
 
 
+class LogicalNetworkDetail(LogicalNetworkSummary):
+    """Detailed information for an oVirt / OLVM logical network."""
+
+    stp: bool = Field(default=False, description="Whether Spanning Tree Protocol (STP) is enabled")
+    port_isolation: bool = Field(default=False, description="Whether port isolation is enabled")
+    usages: list[str] = Field(
+        default_factory=list, description="Network usages (e.g. 'vm', 'display')"
+    )
+    vnic_profiles: list[str] = Field(
+        default_factory=list,
+        description="Names of vNIC profiles associated with this network",
+    )
+    network_labels: list[str] = Field(
+        default_factory=list, description="Network labels assigned to this network"
+    )
+    permissions_count: int = Field(
+        default=0,
+        description="Total number of discrete permissions granted on this network",
+    )
+
+
 class LogicalNetworkResult(BaseModel):
     """Outcome of a logical network creation or deletion operation."""
 

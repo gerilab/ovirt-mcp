@@ -59,6 +59,16 @@ class RoleSummary(BaseModel):
     mutable: bool = Field(default=False, description="Whether this role can be modified")
 
 
+class RoleResult(BaseModel):
+    """Result of an authorization role mutation (add, delete)."""
+
+    success: bool = Field(description="Whether the role operation succeeded")
+    action: str = Field(description="Action executed: 'add' or 'delete'")
+    role_id: str | None = Field(default=None, description="UUID of the affected role")
+    role_name: str = Field(description="Name of the affected role")
+    message: str = Field(description="Human-readable outcome description")
+
+
 class PermissionSummary(BaseModel):
     """Discrete authorization permission granting a role to a user or group on a target entity."""
 

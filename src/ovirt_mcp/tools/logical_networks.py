@@ -7,6 +7,7 @@ import ovirtsdk4.types as sdk_types
 from ovirt_mcp.client import get_client
 from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtValidationError
 from ovirt_mcp.models.logical_network import (
+    LogicalNetworkDetail,
     LogicalNetworkResult,
     LogicalNetworkSummary,
 )
@@ -92,6 +93,107 @@ def list_logical_networks_tool(
         )
 
     return results
+
+
+def get_logical_network_tool(
+    name_or_id: str,
+) -> LogicalNetworkDetail:
+    """Retrieve detailed configuration and topology for a logical network.
+
+    Args:
+        name_or_id: Name or UUID of the logical network.
+
+    Returns:
+        LogicalNetworkDetail with MTU, VLAN, STP, port isolation, vNIC profiles, labels, and permissions.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    sys_svc = conn.system_service()
+    nets_svc = sys_svc.networks_service()
+    dcs_svc = sys_svc.data_centers_service()
+
+    net = client.find_resource_by_id_or_name(nets_svc, name_or_id, "network")
+    net_id = str(net.id)
+    net_name = str(getattr(net, "name", net_id))
+    desc = getattr(net, "description", None)
+
+    dc_obj = getattr(net, "data_center", None)
+    net_dc_id = str(dc_obj.id) if dc_obj and getattr(dc_obj, "id", None) else "unknown"
+    dc_name = "unknown"
+    if dc_obj and getattr(dc_obj, "name", None):
+        dc_name = str(dc_obj.name)
+    elif net_dc_id != "unknown":
+        try:
+            dc = dcs_svc.data_center_service(net_dc_id).get()
+            dc_name = str(getattr(dc, "name", net_dc_id))
+        except Exception:
+            dc_name = net_dc_id
+
+    vlan_obj = getattr(net, "vlan", None)
+    vlan_id = getattr(vlan_obj, "id", None) if vlan_obj else None
+    if vlan_id is not None:
+        try:
+            vlan_id = int(vlan_id)
+        except (ValueError, TypeError):
+            vlan_id = None
+
+    mtu = getattr(net, "mtu", None)
+    if mtu is not None:
+        try:
+            mtu = int(mtu)
+        except (ValueError, TypeError):
+            mtu = None
+
+    status_obj = getattr(net, "status", None)
+    status_str = str(getattr(status_obj, "value", status_obj or "operational")).lower()
+    stp = bool(getattr(net, "stp", False))
+    port_isolation = bool(getattr(net, "port_isolation", False))
+
+    raw_usages = getattr(net, "usages", []) or []
+    usages = [str(getattr(u, "value", u)) for u in raw_usages]
+
+    net_svc = nets_svc.network_service(net_id)
+
+    # vNIC profiles
+    vnic_profiles: list[str] = []
+    try:
+        profiles = net_svc.vnic_profiles_service().list()
+        vnic_profiles = [str(p.name) for p in profiles if getattr(p, "name", None)]
+    except Exception as exc:
+        logger.debug("Could not fetch vnic profiles for network '%s': %s", net_name, exc)
+
+    # Network labels
+    network_labels: list[str] = []
+    try:
+        labels = net_svc.network_labels_service().list()
+        network_labels = [str(getattr(lbl, "id", lbl)) for lbl in labels]
+    except Exception as exc:
+        logger.debug("Could not fetch labels for network '%s': %s", net_name, exc)
+
+    # Permissions count
+    permissions_count = 0
+    try:
+        perms = net_svc.permissions_service().list()
+        permissions_count = len(perms)
+    except Exception as exc:
+        logger.debug("Could not fetch permissions for network '%s': %s", net_name, exc)
+
+    return LogicalNetworkDetail(
+        id=net_id,
+        name=net_name,
+        description=desc,
+        data_center_id=net_dc_id,
+        data_center_name=dc_name,
+        vlan_id=vlan_id,
+        mtu=mtu,
+        status=status_str,
+        stp=stp,
+        port_isolation=port_isolation,
+        usages=usages,
+        vnic_profiles=vnic_profiles,
+        network_labels=network_labels,
+        permissions_count=permissions_count,
+    )
 
 
 def create_logical_network_tool(

@@ -50,89 +50,105 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
    - [`ovirt_disk_detach`](#27-ovirt_disk_detach)
    - [`ovirt_disk_create`](#28-ovirt_disk_create)
    - [`ovirt_disk_resize`](#29-ovirt_disk_resize)
-   - [`ovirt_vm_nic_list`](#30-ovirt_vm_nic_list)
-   - [`ovirt_vm_nic_add`](#31-ovirt_vm_nic_add)
-   - [`ovirt_vm_nic_remove`](#32-ovirt_vm_nic_remove)
-   - [`ovirt_network_profile_list`](#33-ovirt_network_profile_list)
-   - [`ovirt_vm_update`](#34-ovirt_vm_update)
-   - [`ovirt_vm_graphics_consoles`](#35-ovirt_vm_graphics_consoles)
-   - [`ovirt_vm_ticket`](#36-ovirt_vm_ticket)
-   - [`ovirt_host_list`](#37-ovirt_host_list)
-   - [`ovirt_host_get`](#38-ovirt_host_get)
-   - [`ovirt_host_stats`](#39-ovirt_host_stats)
-   - [`ovirt_host_maintenance`](#40-ovirt_host_maintenance)
-   - [`ovirt_host_activate`](#41-ovirt_host_activate)
-   - [`ovirt_host_restart`](#42-ovirt_host_restart)
-   - [`ovirt_host_nic_list`](#43-ovirt_host_nic_list)
-   - [`ovirt_host_numa_list`](#44-ovirt_host_numa_list)
-   - [`ovirt_host_device_list`](#45-ovirt_host_device_list)
-   - [`ovirt_host_storage_list`](#46-ovirt_host_storage_list)
-   - [`ovirt_host_events`](#47-ovirt_host_events)
-   - [`ovirt_affinity_label_list`](#48-ovirt_affinity_label_list)
-   - [`ovirt_affinity_label_create`](#49-ovirt_affinity_label_create)
-   - [`ovirt_affinity_label_delete`](#50-ovirt_affinity_label_delete)
-   - [`ovirt_host_label_list`](#51-ovirt_host_label_list)
-   - [`ovirt_host_label_assign`](#52-ovirt_host_label_assign)
-   - [`ovirt_host_label_unassign`](#53-ovirt_host_label_unassign)
-   - [`ovirt_vm_label_list`](#54-ovirt_vm_label_list)
-   - [`ovirt_vm_label_assign`](#55-ovirt_vm_label_assign)
-   - [`ovirt_vm_label_unassign`](#56-ovirt_vm_label_unassign)
-   - [`ovirt_cluster_affinity_group_list`](#57-ovirt_cluster_affinity_group_list)
-   - [`ovirt_cluster_affinity_group_get`](#58-ovirt_cluster_affinity_group_get)
-   - [`ovirt_cluster_affinity_group_create`](#59-ovirt_cluster_affinity_group_create)
-   - [`ovirt_cluster_affinity_group_update`](#60-ovirt_cluster_affinity_group_update)
-   - [`ovirt_cluster_affinity_group_delete`](#61-ovirt_cluster_affinity_group_delete)
-   - [`ovirt_host_network_attachment_list`](#62-ovirt_host_network_attachment_list)
-   - [`ovirt_host_iscsi_discover`](#63-ovirt_host_iscsi_discover)
-   - [`ovirt_host_iscsi_login`](#64-ovirt_host_iscsi_login)
-   - [`ovirt_host_network_sync`](#65-ovirt_host_network_sync)
-   - [`ovirt_storage_domain_list`](#66-ovirt_storage_domain_list)
-   - [`ovirt_storage_domain_get`](#67-ovirt_storage_domain_get)
-   - [`ovirt_storage_domain_create_nfs`](#68-ovirt_storage_domain_create_nfs)
-   - [`ovirt_storage_domain_attach`](#69-ovirt_storage_domain_attach)
-   - [`ovirt_storage_domain_activate`](#70-ovirt_storage_domain_activate)
-   - [`ovirt_storage_domain_maintenance`](#71-ovirt_storage_domain_maintenance)
-   - [`ovirt_storage_domain_detach`](#72-ovirt_storage_domain_detach)
-   - [`ovirt_storage_domain_delete`](#73-ovirt_storage_domain_delete)
-   - [`ovirt_disk_move`](#74-ovirt_disk_move)
-   - [`ovirt_disk_copy`](#75-ovirt_disk_copy)
-   - [`ovirt_disk_sparsify`](#76-ovirt_disk_sparsify)
-   - [`ovirt_template_list`](#77-ovirt_template_list)
-   - [`ovirt_template_get`](#78-ovirt_template_get)
-   - [`ovirt_template_create_from_vm`](#79-ovirt_template_create_from_vm)
-   - [`ovirt_template_delete`](#80-ovirt_template_delete)
-   - [`ovirt_datacenter_list`](#81-ovirt_datacenter_list)
-   - [`ovirt_datacenter_get`](#82-ovirt_datacenter_get)
-   - [`ovirt_quota_list`](#83-ovirt_quota_list)
-   - [`ovirt_quota_get`](#84-ovirt_quota_get)
-   - [`ovirt_quota_create`](#85-ovirt_quota_create)
-   - [`ovirt_quota_delete`](#86-ovirt_quota_delete)
-   - [`ovirt_network_list`](#87-ovirt_network_list)
-   - [`ovirt_network_create`](#88-ovirt_network_create)
-   - [`ovirt_network_delete`](#89-ovirt_network_delete)
-   - [`ovirt_tag_list`](#90-ovirt_tag_list)
-   - [`ovirt_tag_create`](#91-ovirt_tag_create)
-   - [`ovirt_tag_delete`](#92-ovirt_tag_delete)
-   - [`ovirt_vm_tag_assign`](#93-ovirt_vm_tag_assign)
-   - [`ovirt_vm_tag_unassign`](#94-ovirt_vm_tag_unassign)
-   - [`ovirt_host_tag_assign`](#95-ovirt_host_tag_assign)
-   - [`ovirt_host_tag_unassign`](#96-ovirt_host_tag_unassign)
-   - [`ovirt_host_bond_create`](#97-ovirt_host_bond_create)
-   - [`ovirt_host_bond_delete`](#98-ovirt_host_bond_delete)
-   - [`ovirt_user_tag_list`](#99-ovirt_user_tag_list)
-   - [`ovirt_user_tag_assign`](#100-ovirt_user_tag_assign)
-   - [`ovirt_user_tag_unassign`](#101-ovirt_user_tag_unassign)
-   - [`ovirt_host_upgrade_check`](#102-ovirt_host_upgrade_check)
-   - [`ovirt_host_upgrade`](#103-ovirt_host_upgrade)
-   - [`ovirt_system_events`](#104-ovirt_system_events)
-   - [`ovirt_user_list`](#105-ovirt_user_list)
-   - [`ovirt_user_get`](#106-ovirt_user_get)
-   - [`ovirt_user_add`](#107-ovirt_user_add)
-   - [`ovirt_user_delete`](#108-ovirt_user_delete)
-   - [`ovirt_role_list`](#109-ovirt_role_list)
-   - [`ovirt_permission_list`](#110-ovirt_permission_list)
-   - [`ovirt_permission_add`](#111-ovirt_permission_add)
-   - [`ovirt_permission_remove`](#112-ovirt_permission_remove)
+   - [`ovirt_disk_move`](#30-ovirt_disk_move)
+   - [`ovirt_disk_copy`](#31-ovirt_disk_copy)
+   - [`ovirt_disk_sparsify`](#32-ovirt_disk_sparsify)
+   - [`ovirt_vm_nic_list`](#33-ovirt_vm_nic_list)
+   - [`ovirt_vm_nic_add`](#34-ovirt_vm_nic_add)
+   - [`ovirt_vm_nic_remove`](#35-ovirt_vm_nic_remove)
+   - [`ovirt_network_profile_list`](#36-ovirt_network_profile_list)
+   - [`ovirt_vm_update`](#37-ovirt_vm_update)
+   - [`ovirt_vm_graphics_consoles`](#38-ovirt_vm_graphics_consoles)
+   - [`ovirt_vm_ticket`](#39-ovirt_vm_ticket)
+   - [`ovirt_host_list`](#40-ovirt_host_list)
+   - [`ovirt_host_get`](#41-ovirt_host_get)
+   - [`ovirt_host_stats`](#42-ovirt_host_stats)
+   - [`ovirt_host_maintenance`](#43-ovirt_host_maintenance)
+   - [`ovirt_host_activate`](#44-ovirt_host_activate)
+   - [`ovirt_host_restart`](#45-ovirt_host_restart)
+   - [`ovirt_host_upgrade_check`](#46-ovirt_host_upgrade_check)
+   - [`ovirt_host_upgrade`](#47-ovirt_host_upgrade)
+   - [`ovirt_host_nic_list`](#48-ovirt_host_nic_list)
+   - [`ovirt_host_numa_list`](#49-ovirt_host_numa_list)
+   - [`ovirt_host_device_list`](#50-ovirt_host_device_list)
+   - [`ovirt_host_storage_list`](#51-ovirt_host_storage_list)
+   - [`ovirt_host_events`](#52-ovirt_host_events)
+   - [`ovirt_affinity_label_list`](#53-ovirt_affinity_label_list)
+   - [`ovirt_affinity_label_create`](#54-ovirt_affinity_label_create)
+   - [`ovirt_affinity_label_delete`](#55-ovirt_affinity_label_delete)
+   - [`ovirt_host_label_list`](#56-ovirt_host_label_list)
+   - [`ovirt_host_label_assign`](#57-ovirt_host_label_assign)
+   - [`ovirt_host_label_unassign`](#58-ovirt_host_label_unassign)
+   - [`ovirt_vm_label_list`](#59-ovirt_vm_label_list)
+   - [`ovirt_vm_label_assign`](#60-ovirt_vm_label_assign)
+   - [`ovirt_vm_label_unassign`](#61-ovirt_vm_label_unassign)
+   - [`ovirt_cluster_affinity_group_list`](#62-ovirt_cluster_affinity_group_list)
+   - [`ovirt_cluster_affinity_group_get`](#63-ovirt_cluster_affinity_group_get)
+   - [`ovirt_cluster_affinity_group_create`](#64-ovirt_cluster_affinity_group_create)
+   - [`ovirt_cluster_affinity_group_update`](#65-ovirt_cluster_affinity_group_update)
+   - [`ovirt_cluster_affinity_group_delete`](#66-ovirt_cluster_affinity_group_delete)
+   - [`ovirt_host_network_attachment_list`](#67-ovirt_host_network_attachment_list)
+   - [`ovirt_host_iscsi_discover`](#68-ovirt_host_iscsi_discover)
+   - [`ovirt_host_iscsi_login`](#69-ovirt_host_iscsi_login)
+   - [`ovirt_host_network_sync`](#70-ovirt_host_network_sync)
+   - [`ovirt_storage_domain_list`](#71-ovirt_storage_domain_list)
+   - [`ovirt_storage_domain_get`](#72-ovirt_storage_domain_get)
+   - [`ovirt_storage_domain_create_nfs`](#73-ovirt_storage_domain_create_nfs)
+   - [`ovirt_storage_domain_attach`](#74-ovirt_storage_domain_attach)
+   - [`ovirt_storage_domain_activate`](#75-ovirt_storage_domain_activate)
+   - [`ovirt_storage_domain_maintenance`](#76-ovirt_storage_domain_maintenance)
+   - [`ovirt_storage_domain_detach`](#77-ovirt_storage_domain_detach)
+   - [`ovirt_storage_domain_delete`](#78-ovirt_storage_domain_delete)
+   - [`ovirt_template_list`](#79-ovirt_template_list)
+   - [`ovirt_template_get`](#80-ovirt_template_get)
+   - [`ovirt_template_create_from_vm`](#81-ovirt_template_create_from_vm)
+   - [`ovirt_template_delete`](#82-ovirt_template_delete)
+   - [`ovirt_datacenter_list`](#83-ovirt_datacenter_list)
+   - [`ovirt_datacenter_get`](#84-ovirt_datacenter_get)
+   - [`ovirt_quota_list`](#85-ovirt_quota_list)
+   - [`ovirt_quota_get`](#86-ovirt_quota_get)
+   - [`ovirt_quota_create`](#87-ovirt_quota_create)
+   - [`ovirt_quota_delete`](#88-ovirt_quota_delete)
+   - [`ovirt_network_list`](#89-ovirt_network_list)
+   - [`ovirt_network_get`](#90-ovirt_network_get)
+   - [`ovirt_network_create`](#91-ovirt_network_create)
+   - [`ovirt_network_delete`](#92-ovirt_network_delete)
+   - [`ovirt_tag_list`](#93-ovirt_tag_list)
+   - [`ovirt_tag_create`](#94-ovirt_tag_create)
+   - [`ovirt_tag_delete`](#95-ovirt_tag_delete)
+   - [`ovirt_vm_tag_assign`](#96-ovirt_vm_tag_assign)
+   - [`ovirt_vm_tag_unassign`](#97-ovirt_vm_tag_unassign)
+   - [`ovirt_host_tag_assign`](#98-ovirt_host_tag_assign)
+   - [`ovirt_host_tag_unassign`](#99-ovirt_host_tag_unassign)
+   - [`ovirt_user_tag_list`](#100-ovirt_user_tag_list)
+   - [`ovirt_user_tag_assign`](#101-ovirt_user_tag_assign)
+   - [`ovirt_user_tag_unassign`](#102-ovirt_user_tag_unassign)
+   - [`ovirt_host_bond_create`](#103-ovirt_host_bond_create)
+   - [`ovirt_host_bond_delete`](#104-ovirt_host_bond_delete)
+   - [`ovirt_system_events`](#105-ovirt_system_events)
+   - [`ovirt_user_list`](#106-ovirt_user_list)
+   - [`ovirt_user_get`](#107-ovirt_user_get)
+   - [`ovirt_user_add`](#108-ovirt_user_add)
+   - [`ovirt_user_delete`](#109-ovirt_user_delete)
+   - [`ovirt_role_list`](#110-ovirt_role_list)
+   - [`ovirt_role_add`](#111-ovirt_role_add)
+   - [`ovirt_role_delete`](#112-ovirt_role_delete)
+   - [`ovirt_permission_list`](#113-ovirt_permission_list)
+   - [`ovirt_permission_add`](#114-ovirt_permission_add)
+   - [`ovirt_permission_remove`](#115-ovirt_permission_remove)
+   - [`ovirt_vm_pool_list`](#116-ovirt_vm_pool_list)
+   - [`ovirt_vm_pool_get`](#117-ovirt_vm_pool_get)
+   - [`ovirt_vm_pool_create`](#118-ovirt_vm_pool_create)
+   - [`ovirt_vm_pool_update`](#119-ovirt_vm_pool_update)
+   - [`ovirt_vm_pool_delete`](#120-ovirt_vm_pool_delete)
+   - [`ovirt_vm_pool_allocate_vm`](#121-ovirt_vm_pool_allocate_vm)
+   - [`ovirt_vm_checkpoint_list`](#122-ovirt_vm_checkpoint_list)
+   - [`ovirt_vm_checkpoint_get`](#123-ovirt_vm_checkpoint_get)
+   - [`ovirt_vm_checkpoint_delete`](#124-ovirt_vm_checkpoint_delete)
+   - [`ovirt_vm_backup_list`](#125-ovirt_vm_backup_list)
+   - [`ovirt_vm_backup_get`](#126-ovirt_vm_backup_get)
+   - [`ovirt_vm_backup_start`](#127-ovirt_vm_backup_start)
+   - [`ovirt_vm_backup_finalize`](#128-ovirt_vm_backup_finalize)
 7. [Connecting to AI MCP Clients](#connecting-to-ai-mcp-clients)
 8. [Testing & Quality Verification](#testing--quality-verification)
 9. [Troubleshooting & FAQ](#troubleshooting--faq)
@@ -1097,7 +1113,48 @@ Expands the provisioned capacity of a virtual disk to a larger size in gigabytes
 
 ---
 
-### 30. `ovirt_vm_nic_list`
+### 30. `ovirt_disk_move`
+
+Moves a virtual disk to a different Storage Domain (Storage vMotion / offline disk migration). Safely migrates the underlying disk image between active storage domains.
+
+- **Inputs:**
+  - `disk_name_or_id` *(string, required)*: Name or UUID of the virtual disk to migrate.
+  - `storage_domain_name_or_id` *(string, required)*: Target Storage Domain name or UUID.
+  - `wait` *(bool, optional, default: True)*: Whether to synchronously block until migration completes.
+  - `timeout` *(int, optional, default: 300)*: Maximum time in seconds to wait for migration.
+- **Outputs:** `DiskOperationResult`
+
+---
+
+### 31. `ovirt_disk_copy`
+
+Clones / copies a virtual disk to a target Storage Domain. Allows creating an independent copy with an optional new disk alias.
+
+- **Inputs:**
+  - `disk_name_or_id` *(string, required)*: Name or UUID of the virtual disk to clone.
+  - `storage_domain_name_or_id` *(string, required)*: Target Storage Domain name or UUID.
+  - `new_alias` *(string, optional)*: Optional new display name / alias for the copied disk.
+  - `wait` *(bool, optional, default: True)*: Whether to synchronously block until copy completes.
+  - `timeout` *(int, optional, default: 300)*: Maximum time in seconds to wait for copy.
+- **Outputs:** `DiskOperationResult`
+
+---
+
+### 32. `ovirt_disk_sparsify`
+
+Reclaims zeroed free space from a raw-formatted virtual disk (sparsification / hole punching). Compacts the disk image on the underlying storage domain.
+
+- **Inputs:**
+  - `disk_name_or_id` *(string, required)*: Name or UUID of the virtual disk to sparsify.
+  - `wait` *(bool, optional, default: True)*: Whether to wait for sparsification to complete.
+  - `timeout` *(int, optional, default: 300)*: Maximum wait time in seconds.
+- **Outputs:** `DiskOperationResult`
+
+---
+
+---
+
+### 33. `ovirt_vm_nic_list`
 
 Lists all virtual network interface cards (vNICs) attached to a virtual machine, reporting interface name, device UUID, assigned MAC address, interface model (`virtio`, `e1000`), plugged state, linked state, and associated vNIC profile.
 
@@ -1107,7 +1164,7 @@ Lists all virtual network interface cards (vNICs) attached to a virtual machine,
 
 ---
 
-### 31. `ovirt_vm_nic_add`
+### 34. `ovirt_vm_nic_add`
 
 Adds a new virtual network interface card (vNIC) to a virtual machine, attaching it to a specific vNIC profile on a logical network.
 
@@ -1130,7 +1187,7 @@ Adds a new virtual network interface card (vNIC) to a virtual machine, attaching
 
 ---
 
-### 32. `ovirt_vm_nic_remove`
+### 35. `ovirt_vm_nic_remove`
 
 Removes a virtual network interface card (vNIC) from a virtual machine. Reversible counterpart to `ovirt_vm_nic_add`. **Destructive action**: Requires explicit `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`).
 
@@ -1148,7 +1205,7 @@ Removes a virtual network interface card (vNIC) from a virtual machine. Reversib
 
 ---
 
-### 33. `ovirt_network_profile_list`
+### 36. `ovirt_network_profile_list`
 
 Lists available virtual network interface profiles (vNIC profiles) across logical networks in the environment.
 
@@ -1164,7 +1221,7 @@ Lists available virtual network interface profiles (vNIC profiles) across logica
 
 ---
 
-### 34. `ovirt_vm_update`
+### 37. `ovirt_vm_update`
 
 Updates virtual machine compute resources (RAM memory in MB, CPU cores/sockets/threads), description, or High Availability failover status. Modifying hardware CPU or memory is Safe-Mode guarded and requires explicit `confirm=True`.
 
@@ -1188,7 +1245,7 @@ Updates virtual machine compute resources (RAM memory in MB, CPU cores/sockets/t
 
 ---
 
-### 35. `ovirt_vm_graphics_consoles`
+### 38. `ovirt_vm_graphics_consoles`
 
 Lists available graphical display consoles (VNC / SPICE) configured for a virtual machine, reporting protocol, display ports, and console device identifiers.
 
@@ -1202,7 +1259,7 @@ Lists available graphical display consoles (VNC / SPICE) configured for a virtua
 
 ---
 
-### 36. `ovirt_vm_ticket`
+### 39. `ovirt_vm_ticket`
 
 Generates a temporary, single-use authentication password/ticket to connect to a running virtual machine's graphical console (VNC / SPICE). The virtual machine must be running (`status='up'`).
 
@@ -1218,7 +1275,7 @@ Generates a temporary, single-use authentication password/ticket to connect to a
 
 ---
 
-### 37. `ovirt_host_list`
+### 40. `ovirt_host_list`
 
 Lists all hypervisor hosts in the virtualization environment across clusters. Reports operational status, cluster name, management IP address, physical CPU topology, total RAM in GB, active VMs count, SPM (Storage Pool Manager) status, and nested virtualization detection.
 
@@ -1264,7 +1321,7 @@ Lists all hypervisor hosts in the virtualization environment across clusters. Re
 
 ---
 
-### 38. `ovirt_host_get`
+### 41. `ovirt_host_get`
 
 Retrieves comprehensive hardware, BIOS, OS distribution, kernel, VDSM/libvirt versions, power management (fencing) configuration, and hardware device counts for a single hypervisor host.
 
@@ -1286,7 +1343,7 @@ Retrieves comprehensive hardware, BIOS, OS distribution, kernel, VDSM/libvirt ve
 
 ---
 
-### 39. `ovirt_host_stats`
+### 42. `ovirt_host_stats`
 
 Retrieves real-time telemetry metrics and system load statistics for a hypervisor host, including active CPU utilization percentage, user/system/idle breakdown, 5-minute system load average, memory allocated/used/free/percentage, swap usage, active VM count, and system boot time.
 
@@ -1309,7 +1366,7 @@ Retrieves real-time telemetry metrics and system load statistics for a hyperviso
 
 ---
 
-### 40. `ovirt_host_maintenance`
+### 43. `ovirt_host_maintenance`
 
 Places a hypervisor host into maintenance mode (`deactivate`). Initiates an orderly, non-disruptive evacuation of all running virtual machines, live-migrating them to other active hosts in the cluster.
 
@@ -1337,7 +1394,7 @@ Places a hypervisor host into maintenance mode (`deactivate`). Initiates an orde
 
 ---
 
-### 41. `ovirt_host_activate`
+### 44. `ovirt_host_activate`
 
 Activates a hypervisor host from maintenance mode back to active `up` status. Reversible counterpart to `ovirt_host_maintenance`, restoring the hypervisor's ability to host workloads and participate in cluster load-balancing.
 
@@ -1356,7 +1413,7 @@ Activates a hypervisor host from maintenance mode back to active `up` status. Re
 
 ---
 
-### 42. `ovirt_host_restart`
+### 45. `ovirt_host_restart`
 
 Reboots a hypervisor host via out-of-band power management fencing.
 
@@ -1383,752 +1440,7 @@ Reboots a hypervisor host via out-of-band power management fencing.
 
 ---
 
-### 43. `ovirt_host_nic_list`
-
-Lists physical network interfaces (pNICs) on a hypervisor host, including device name, MAC address, link speed in Mbps, link status (`up`/`down`), configured IPv4/IPv6 addresses, attached logical networks, and bonding slave memberships.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Host display name or UUID.
-- **Outputs:** `list[HostNicInfo]`
-
----
-
-### 44. `ovirt_host_numa_list`
-
-Lists Non-Uniform Memory Access (NUMA) node topology for a hypervisor host, reporting node index, RAM memory allocated to each NUMA node in MB, and assigned physical CPU core IDs.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Host display name or UUID.
-- **Outputs:** `list[HostNumaNodeInfo]`
-
----
-
-### 45. `ovirt_host_device_list`
-
-Lists hardware and PCI bus devices configured on a hypervisor host (SR-IOV virtual functions, GPU passthrough devices, Fibre Channel HBAs, network adapters).
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Host display name or UUID.
-  - `max_devices` *(int, optional, default: 50)*: Maximum devices to return.
-- **Outputs:** `list[HostDeviceInfo]`
-  - `id`: PCI device address identifier.
-  - `name`: Device name.
-  - `product`: Hardware product description.
-  - `vendor`: Hardware vendor name.
-  - `driver`: Active kernel driver module.
-  - `iommu_group`: IOMMU group index for PCI passthrough.
-
----
-
-### 46. `ovirt_host_storage_list`
-
-Lists storage domains and SAN/block storage server connections accessible to a hypervisor host.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Host display name or UUID.
-- **Outputs:** `list[dict]` containing storage domain ID, name, storage type, and target addresses.
-
----
-
-### 47. `ovirt_host_events`
-
-Retrieves host-specific audit history, hardware alerts, SPM role elections, and operational events.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Host display name or UUID.
-  - `max_events` *(int, optional, default: 25)*: Maximum number of events to return.
-  - `severity` *(string, optional)*: Filter by severity (`'normal'`, `'warning'`, `'error'`, `'alert'`).
-- **Outputs:** `list[HostEvent]`
-  - `id`: Event ID.
-  - `code`: oVirt event code integer.
-  - `severity`: Event severity level.
-  - `description`: Event message.
-  - `timestamp`: Event timestamp.
-
----
-
-### 48. `ovirt_affinity_label_list`
-
-Lists all global Affinity Labels registered in the oVirt/OLVM engine, including the hypervisor hosts and virtual machines assigned to each label.
-
-- **Inputs:** None.
-- **Outputs:** `list[AffinityLabelInfo]`
-  - `id`: UUID of the label.
-  - `name`: Human-readable label name.
-  - `hosts`: List of hypervisor host names currently bearing this label.
-  - `vms`: List of virtual machine names currently bearing this label.
-
----
-
-### 49. `ovirt_affinity_label_create`
-
-Creates a new global Affinity Label in oVirt/OLVM.
-
-- **Inputs:**
-  - `name` *(string, required)*: Unique label name (e.g. `database-nodes`, `pci-passthrough-hosts`).
-- **Outputs:** `AffinityLabelResult`
-  - `success`: Whether creation succeeded.
-  - `label_id`: UUID of the created label.
-  - `label_name`: Name of the label.
-  - `message`: Outcome description.
-
----
-
-### 50. `ovirt_affinity_label_delete`
-
-Deletes an Affinity Label. Protected by safe-mode confirmation (`confirm=True`). If the label is currently attached to hosts or VMs, oVirt requires detaching it first. Setting `detach_first=True` safely unassigns the label from all entities before deletion.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Label name or UUID.
-  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
-  - `detach_first` *(bool, optional, default: False)*: Automatically unassign from all hosts and VMs before deleting to avoid HTTP 409 conflicts.
-- **Outputs:** `AffinityLabelResult`
-
----
-
-### 51. `ovirt_host_label_list`
-
-Lists all Affinity Labels assigned to a specific hypervisor host.
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Host name or UUID.
-- **Outputs:** `list[str]` of affinity label names.
-
----
-
-### 52. `ovirt_host_label_assign`
-
-Assigns an Affinity Label to a hypervisor host.
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Host name or UUID.
-  - `label_name_or_id` *(string, required)*: Affinity label name or UUID.
-- **Outputs:** `EntityLabelResult`
-  - `success`: Whether assignment succeeded.
-  - `entity_name`: Name of the host.
-  - `label_name`: Name of the assigned label.
-  - `current_labels`: Complete list of labels currently on this host.
-
----
-
-### 53. `ovirt_host_label_unassign`
-
-Unassigns an Affinity Label from a hypervisor host (symmetric, reversible counterpart of `ovirt_host_label_assign`).
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Host name or UUID.
-  - `label_name_or_id` *(string, required)*: Affinity label name or UUID to remove.
-- **Outputs:** `EntityLabelResult`
-
----
-
-### 54. `ovirt_vm_label_list`
-
-Lists all Affinity Labels assigned to a virtual machine.
-
-- **Inputs:**
-  - `vm_name_or_id` *(string, required)*: VM name or UUID.
-- **Outputs:** `list[str]` of affinity label names.
-
----
-
-### 55. `ovirt_vm_label_assign`
-
-Assigns an Affinity Label to a virtual machine.
-
-- **Inputs:**
-  - `vm_name_or_id` *(string, required)*: VM name or UUID.
-  - `label_name_or_id` *(string, required)*: Affinity label name or UUID.
-- **Outputs:** `EntityLabelResult`
-
----
-
-### 56. `ovirt_vm_label_unassign`
-
-Unassigns an Affinity Label from a virtual machine (symmetric, reversible counterpart of `ovirt_vm_label_assign`).
-
-- **Inputs:**
-  - `vm_name_or_id` *(string, required)*: VM name or UUID.
-  - `label_name_or_id` *(string, required)*: Affinity label name or UUID to remove.
-- **Outputs:** `EntityLabelResult`
-
----
-
-### 57. `ovirt_cluster_affinity_group_list`
-
-Lists all Affinity Groups defined within a cluster, including rules (positive/negative, enforcing), member VMs, member Hosts, and label associations.
-
-- **Inputs:**
-  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
-- **Outputs:** `list[AffinityGroupInfo]`
-  - `id`: UUID of the affinity group.
-  - `name`: Group name.
-  - `cluster_name`: Name of the cluster.
-  - `vms_rule`: `AffinityRuleConfig` (`enabled`, `positive`, `enforcing`).
-  - `hosts_rule`: `AffinityRuleConfig` (`enabled`, `positive`, `enforcing`).
-  - `vms`: Member VM names or IDs.
-  - `hosts`: Member Host names or IDs.
-  - `vm_labels`: Member VM label names.
-  - `host_labels`: Member Host label names.
-
----
-
-### 58. `ovirt_cluster_affinity_group_get`
-
-Retrieves detailed configuration and member lists of a specific Affinity Group in a cluster.
-
-- **Inputs:**
-  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
-  - `group_name_or_id` *(string, required)*: Affinity group name or UUID.
-- **Outputs:** `AffinityGroupInfo`
-
----
-
-### 59. `ovirt_cluster_affinity_group_create`
-
-Creates a new Affinity Group in a cluster with fine-grained VM-to-VM and VM-to-Host rules.
-
-- **Inputs:**
-  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
-  - `name` *(string, required)*: Unique name for the group.
-  - `description` *(string, optional)*: Purpose description.
-  - `priority` *(float, optional)*: Scheduling priority (e.g. `1.0` - `5.0`).
-  - `vm_positive` *(bool, optional, default: True)*: Positive VM affinity (`True`, run together) or anti-affinity (`False`, run on separate hypervisors).
-  - `vm_enforcing` *(bool, optional, default: False)*: Mandatory hard rule (`True`) vs. soft preference (`False`).
-  - `vm_enabled` *(bool, optional, default: True)*: Enable/disable the VM rule.
-  - `host_positive` *(bool, optional, default: True)*: Positive Host affinity (`True`, run on specified hosts) or negative (`False`, forbidden on specified hosts).
-  - `host_enforcing` *(bool, optional, default: False)*: Mandatory host enforcement (`True`) vs soft preference (`False`).
-  - `host_enabled` *(bool, optional, default: True)*: Enable/disable the Host rule.
-  - `vms` *(list[str], optional)*: List of member VM names or UUIDs.
-  - `hosts` *(list[str], optional)*: List of member Host names or UUIDs.
-  - `vm_labels` *(list[str], optional)*: List of member VM Affinity Label names or UUIDs.
-  - `host_labels` *(list[str], optional)*: List of member Host Affinity Label names or UUIDs.
-- **Outputs:** `AffinityGroupResult`
-
----
-
-### 60. `ovirt_cluster_affinity_group_update`
-
-Updates rules, settings, or member lists of an existing Affinity Group.
-
-- **Inputs:**
-  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
-  - `group_name_or_id` *(string, required)*: Affinity group name or UUID.
-  - `name` *(string, optional)*: Rename group.
-  - `description` *(string, optional)*: Update description.
-  - `priority` *(float, optional)*: Update priority.
-  - `vm_positive` *(bool, optional)*: Update VM positive/anti-affinity rule.
-  - `vm_enforcing` *(bool, optional)*: Update VM enforcement.
-  - `host_positive` *(bool, optional)*: Update Host affinity rule.
-  - `host_enforcing` *(bool, optional)*: Update Host enforcement.
-  - `vms` *(list[str], optional)*: Replace complete list of member VMs.
-  - `hosts` *(list[str], optional)*: Replace complete list of member Hosts.
-  - `vm_labels` *(list[str], optional)*: Replace complete list of member VM labels.
-  - `host_labels` *(list[str], optional)*: Replace complete list of member Host labels.
-- **Outputs:** `AffinityGroupResult`
-
----
-
-### 61. `ovirt_cluster_affinity_group_delete`
-
-Deletes an Affinity Group from a cluster. Protected by safe-mode confirmation (`confirm=True`).
-
-- **Inputs:**
-  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
-  - `group_name_or_id` *(string, required)*: Affinity group name or UUID.
-  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
-- **Outputs:** `AffinityGroupResult`
-
----
-
-### 62. `ovirt_host_network_attachment_list`
-
-Lists all logical network attachments on a hypervisor host, resolving which oVirt network (e.g. `ovirtmgmt`) is attached to which physical NIC or bond (e.g. `eth0`), along with IPv4 assignment method, address, netmask, gateway, and in-sync status.
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Host name or UUID.
-- **Outputs:** `list[HostNetworkAttachmentInfo]`
-  - `id`: UUID of the attachment.
-  - `network_name`: Logical network name.
-  - `host_nic_name`: Physical NIC or bond name.
-  - `boot_protocol`: `static`, `dhcp`, or `none`.
-  - `ip_address`: Assigned IPv4 address.
-  - `in_sync`: Boolean indicating whether host network settings match engine definitions.
-
----
-
-### 63. `ovirt_host_iscsi_discover`
-
-Discovers available iSCSI targets on a storage portal from the designated hypervisor host via OS kernel discovery.
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Host name or UUID.
-  - `address` *(string, required)*: IP address or hostname of the iSCSI portal (e.g. `192.0.2.10`).
-  - `port` *(int, optional, default: 3260)*: iSCSI portal port.
-  - `username` *(string, optional)*: CHAP username.
-  - `password` *(string, optional)*: CHAP password.
-- **Outputs:** `HostIscsiDiscoverResult`
-  - `targets`: List of discovered target IQN strings.
-  - `count`: Total count of targets found.
-
----
-
-### 64. `ovirt_host_iscsi_login`
-
-Logs in to an iSCSI target portal from a hypervisor host, discovering LUN block devices (`/dev/mapper/...`).
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Host name or UUID.
-  - `address` *(string, required)*: iSCSI portal IP or hostname.
-  - `target` *(string, required)*: Target IQN to log in to.
-  - `port` *(int, optional, default: 3260)*: Portal port.
-  - `username` *(string, optional)*: CHAP username.
-  - `password` *(string, optional)*: CHAP password.
-- **Outputs:** `HostIscsiLoginResult`
-
----
-
-### 65. `ovirt_host_network_sync`
-
-Synchronizes out-of-sync network attachments on a hypervisor host with engine definitions, featuring automatic connectivity rollback protection (`check_connectivity=True`).
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Host name or UUID.
-  - `network_attachment_id` *(string, optional)*: Specific attachment ID to synchronize. If omitted, synchronizes all out-of-sync attachments on the host.
-- **Outputs:** `HostNetworkSetupResult`
-
----
-
-### 66. `ovirt_storage_domain_list`
-
-Lists all Storage Domains in oVirt / OLVM with capacity telemetry, storage protocols, format versions, and attached Data Centers.
-
-- **Inputs:** None.
-- **Outputs:** `list[StorageDomainSummary]`
-  - `id`: UUID of the storage domain.
-  - `name`: Domain name.
-  - `type`: Domain role (`data`, `iso`, `export`, `image`).
-  - `storage_type`: Protocol (`nfs`, `iscsi`, `fcp`, `glance`, `local`).
-  - `status`: `active`, `maintenance`, `unattached`, or `inactive`.
-  - `available_gb`: Free space in GB.
-  - `used_gb`: Used space in GB.
-  - `total_gb`: Total space in GB.
-  - `usage_percent`: Utilization percentage.
-  - `data_centers`: List of attached Data Center names.
-
----
-
-### 67. `ovirt_storage_domain_get`
-
-Retrieves deep telemetry, thresholds, and stored object counts (disks, templates, VMs) for a Storage Domain.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Storage domain name or UUID.
-- **Outputs:** `StorageDomainDetail`
-  - `disks_count`: Number of virtual disks stored.
-  - `templates_count`: Number of VM templates stored.
-  - `vms_count`: Number of VMs stored.
-  - `supports_discard`: Boolean indicating TRIM / discard support.
-  - `warning_low_space_indicator`: Low space threshold percentage.
-  - `critical_space_action_blocker`: Critical blocking space threshold in GB.
-
----
-
-### 68. `ovirt_storage_domain_create_nfs`
-
-Creates a new NFS Storage Domain initialized via a designated hypervisor host.
-
-- **Inputs:**
-  - `name` *(string, required)*: Unique name for the storage domain.
-  - `host_name_or_id` *(string, required)*: Hypervisor host responsible for initializing metadata.
-  - `address` *(string, required)*: NFS server IP or hostname (e.g. `192.0.2.20`).
-  - `path` *(string, required)*: NFS export path (e.g. `/exports/data`).
-  - `domain_type` *(string, optional, default: 'data')*: `data`, `iso`, or `export`.
-  - `nfs_version` *(string, optional, default: 'auto')*: `auto`, `v3`, `v4`, `v4_1`, `v4_2`.
-  - `description` *(string, optional)*: Description.
-- **Outputs:** `StorageDomainResult`
-
----
-
-### 69. `ovirt_storage_domain_attach`
-
-Attaches a Storage Domain to a Data Center.
-
-- **Inputs:**
-  - `storage_domain_name_or_id` *(string, required)*: Storage domain name or UUID.
-  - `data_center_name_or_id` *(string, required)*: Target Data Center name or UUID.
-- **Outputs:** `StorageDomainResult`
-
----
-
-### 70. `ovirt_storage_domain_activate`
-
-Activates an attached Storage Domain in a Data Center.
-
-- **Inputs:**
-  - `storage_domain_name_or_id` *(string, required)*: Storage domain name or UUID.
-  - `data_center_name_or_id` *(string, required)*: Data Center name or UUID.
-- **Outputs:** `StorageDomainResult`
-
----
-
-### 71. `ovirt_storage_domain_maintenance`
-
-Moves an attached Storage Domain to maintenance mode in a Data Center (deactivate), preparing it for safe detachment.
-
-- **Inputs:**
-  - `storage_domain_name_or_id` *(string, required)*: Storage domain name or UUID.
-  - `data_center_name_or_id` *(string, required)*: Data Center name or UUID.
-- **Outputs:** `StorageDomainResult`
-
----
-
-### 72. `ovirt_storage_domain_detach`
-
-Detaches a Storage Domain from a Data Center (symmetric, reversible counterpart of `ovirt_storage_domain_attach`). Domain must first be in maintenance mode.
-
-- **Inputs:**
-  - `storage_domain_name_or_id` *(string, required)*: Storage domain name or UUID.
-  - `data_center_name_or_id` *(string, required)*: Data Center name or UUID.
-- **Outputs:** `StorageDomainResult`
-
----
-
-### 73. `ovirt_storage_domain_delete`
-
-Deletes or unregisters a Storage Domain from oVirt / OLVM. Protected by safe-mode confirmation (`confirm=True`). If the domain is currently attached to an active Data Center, deletion is blocked by pre-flight guards to protect data integrity.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Storage domain name or UUID.
-  - `host_name_or_id` *(string, optional)*: Hypervisor host executing the deletion/format.
-  - `format` *(bool, optional, default: False)*: Whether to wipe/format storage metadata.
-  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
-- **Outputs:** `StorageDomainResult`
-
----
-
-### 74. `ovirt_disk_move`
-
-Moves a virtual disk to a different Storage Domain (Storage vMotion / offline disk migration). Safely migrates the underlying disk image between active storage domains.
-
-- **Inputs:**
-  - `disk_name_or_id` *(string, required)*: Name or UUID of the virtual disk to migrate.
-  - `storage_domain_name_or_id` *(string, required)*: Target Storage Domain name or UUID.
-  - `wait` *(bool, optional, default: True)*: Whether to synchronously block until migration completes.
-  - `timeout` *(int, optional, default: 300)*: Maximum time in seconds to wait for migration.
-- **Outputs:** `DiskOperationResult`
-
----
-
-### 75. `ovirt_disk_copy`
-
-Clones / copies a virtual disk to a target Storage Domain. Allows creating an independent copy with an optional new disk alias.
-
-- **Inputs:**
-  - `disk_name_or_id` *(string, required)*: Name or UUID of the virtual disk to clone.
-  - `storage_domain_name_or_id` *(string, required)*: Target Storage Domain name or UUID.
-  - `new_alias` *(string, optional)*: Optional new display name / alias for the copied disk.
-  - `wait` *(bool, optional, default: True)*: Whether to synchronously block until copy completes.
-  - `timeout` *(int, optional, default: 300)*: Maximum time in seconds to wait for copy.
-- **Outputs:** `DiskOperationResult`
-
----
-
-### 76. `ovirt_disk_sparsify`
-
-Reclaims zeroed free space from a raw-formatted virtual disk (sparsification / hole punching). Compacts the disk image on the underlying storage domain.
-
-- **Inputs:**
-  - `disk_name_or_id` *(string, required)*: Name or UUID of the virtual disk to sparsify.
-  - `wait` *(bool, optional, default: True)*: Whether to wait for sparsification to complete.
-  - `timeout` *(int, optional, default: 300)*: Maximum wait time in seconds.
-- **Outputs:** `DiskOperationResult`
-
----
-
-### 77. `ovirt_template_list`
-
-Lists all virtual machine templates and golden images in the virtualization environment, including the system Blank template, custom images, hardware specs (vCPU, RAM), and versioning.
-
-- **Inputs:**
-  - `search` *(string, optional)*: Filter query (e.g. `name=gold*`, `status=ok`).
-- **Outputs:** `list[TemplateSummary]`
-
----
-
-### 78. `ovirt_template_get`
-
-Retrieves deep technical configuration and hardware profile of an oVirt / OLVM template, including attached disk references, NIC count, CPU topology, memory, and OS type.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Template name or UUID.
-- **Outputs:** `TemplateDetail`
-
----
-
-### 79. `ovirt_template_create_from_vm`
-
-Creates a new reusable template / golden image from an existing virtual machine. The source virtual machine must be powered off (`down`) to snapshot disk images.
-
-- **Inputs:**
-  - `vm_name_or_id` *(string, required)*: Name or UUID of the source virtual machine.
-  - `template_name` *(string, required)*: Name for the new template.
-  - `description` *(string, optional)*: Optional descriptive text.
-  - `wait` *(bool, optional, default: True)*: Whether to synchronously block until template provisioning finishes.
-  - `timeout` *(int, optional, default: 300)*: Maximum wait time in seconds.
-- **Outputs:** `TemplateResult`
-
----
-
-### 80. `ovirt_template_delete`
-
-Deletes an oVirt / OLVM template from the environment. Protected by safe-mode confirmation (`confirm=True`). The system Blank template is permanently protected from deletion by pre-flight guards.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Template name or UUID.
-  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
-  - `wait` *(bool, optional, default: True)*: Whether to synchronously block until removal completes.
-  - `timeout` *(int, optional, default: 180)*: Maximum wait time in seconds.
-- **Outputs:** `TemplateResult`
-
----
-
-### 81. `ovirt_datacenter_list`
-
-Lists all Data Centers in the virtualization environment, including status (`up`, `uninitialized`), storage type (`shared`, `local`), compatibility version, and quota mode.
-
-- **Inputs:**
-  - `search` *(string, optional)*: Filter query (e.g. `status=up`, `name=Home*`).
-- **Outputs:** `list[DataCenterSummary]`
-
----
-
-### 82. `ovirt_datacenter_get`
-
-Retrieves complete technical specification of a Data Center, including attached clusters, attached Storage Domains, and defined logical networks.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Data Center name or UUID.
-- **Outputs:** `DataCenterDetail`
-
----
-
-### 83. `ovirt_quota_list`
-
-Lists resource quotas defined across Data Centers or filtered by a specific Data Center.
-
-- **Inputs:**
-  - `data_center` *(string, optional)*: Data Center name or UUID filter.
-- **Outputs:** `list[QuotaSummary]`
-
----
-
-### 84. `ovirt_quota_get`
-
-Retrieves detailed compute and storage limitations defined by a quota, including vCPU limits, memory limits, and storage domain space ceilings.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Quota name or UUID.
-  - `data_center` *(string, optional)*: Data Center name or UUID scoping the search.
-- **Outputs:** `QuotaDetail`
-
----
-
-### 85. `ovirt_quota_create`
-
-Creates a new resource quota under a designated Data Center.
-
-- **Inputs:**
-  - `name` *(string, required)*: Name for the new quota.
-  - `data_center` *(string, required)*: Name or UUID of the parent Data Center.
-  - `description` *(string, optional)*: Optional descriptive notes.
-- **Outputs:** `QuotaResult`
-
----
-
-### 86. `ovirt_quota_delete`
-
-Deletes a resource quota from a Data Center. Protected by safe-mode confirmation (`confirm=True`). The system Default quota is protected by pre-flight guards.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Quota name or UUID.
-  - `data_center` *(string, required)*: Name or UUID of the parent Data Center.
-  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
-- **Outputs:** `QuotaResult`
-
----
-
-### 87. `ovirt_network_list`
-
-Lists logical networks across Data Centers or filtered by Data Center, including 802.1Q VLAN encapsulation tag, MTU, and status.
-
-- **Inputs:**
-  - `data_center` *(string, optional)*: Data Center name or UUID filter.
-- **Outputs:** `list[LogicalNetworkSummary]`
-
----
-
-### 88. `ovirt_network_create`
-
-Creates a new logical network in a Data Center with optional VLAN tagging and custom MTU (e.g. jumbo frames).
-
-- **Inputs:**
-  - `name` *(string, required)*: Name for the logical network.
-  - `data_center` *(string, required)*: Name or UUID of the parent Data Center.
-  - `vlan_id` *(int, optional)*: Optional 802.1Q VLAN encapsulation tag (1-4094).
-  - `mtu` *(int, optional)*: Optional MTU payload size (e.g. 1500, 9000).
-  - `description` *(string, optional)*: Optional descriptive notes.
-- **Outputs:** `LogicalNetworkResult`
-
----
-
-### 89. `ovirt_network_delete`
-
-Deletes a logical network from a Data Center. Protected by safe-mode confirmation (`confirm=True`). The default management network `ovirtmgmt` is permanently protected from deletion.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Network name or UUID.
-  - `data_center` *(string, optional)*: Data Center name or UUID scoping the search.
-  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
-- **Outputs:** `LogicalNetworkResult`
-
----
-
-### 90. `ovirt_tag_list`
-
-Lists hierarchical inventory tags in the oVirt / OLVM virtualization environment, including tag UUID, display name, description, and parent link.
-
-- **Inputs:**
-  - `search` *(string, optional)*: Optional search query.
-- **Outputs:** `list[TagSummary]`
-
----
-
-### 91. `ovirt_tag_create`
-
-Creates a new inventory tag in oVirt / OLVM with optional parent hierarchical nesting.
-
-- **Inputs:**
-  - `name` *(string, required)*: Name for the new tag.
-  - `description` *(string, optional)*: Optional descriptive text.
-  - `parent` *(string, optional)*: Optional parent tag name or UUID for hierarchical nesting.
-- **Outputs:** `TagResult`
-
----
-
-### 92. `ovirt_tag_delete`
-
-Deletes an inventory tag from oVirt / OLVM. Protected by safe-mode confirmation (`confirm=True`). The system root tag is protected from removal.
-
-- **Inputs:**
-  - `name_or_id` *(string, required)*: Tag name or UUID.
-  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
-- **Outputs:** `TagResult`
-
----
-
-### 93. `ovirt_vm_tag_assign`
-
-Assigns an inventory tag to a virtual machine.
-
-- **Inputs:**
-  - `vm_name_or_id` *(string, required)*: Virtual machine name or UUID.
-  - `tag_name_or_id` *(string, required)*: Tag name or UUID.
-- **Outputs:** `TagAssignmentResult`
-
----
-
-### 94. `ovirt_vm_tag_unassign`
-
-Unassigns an inventory tag from a virtual machine.
-
-- **Inputs:**
-  - `vm_name_or_id` *(string, required)*: Virtual machine name or UUID.
-  - `tag_name_or_id` *(string, required)*: Tag name or UUID.
-- **Outputs:** `TagAssignmentResult`
-
----
-
-### 95. `ovirt_host_tag_assign`
-
-Assigns an inventory tag to a hypervisor host.
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Hypervisor host name or UUID.
-  - `tag_name_or_id` *(string, required)*: Tag name or UUID.
-- **Outputs:** `TagAssignmentResult`
-
----
-
-### 96. `ovirt_host_tag_unassign`
-
-Unassigns an inventory tag from a hypervisor host.
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Hypervisor host name or UUID.
-  - `tag_name_or_id` *(string, required)*: Tag name or UUID.
-- **Outputs:** `TagAssignmentResult`
-
----
-
-### 97. `ovirt_host_bond_create`
-
-Creates a bonded network interface on a hypervisor host combining 2 or more physical interfaces. Supports active-backup, 802.3ad (LACP), balance-rr, and custom bond modes.
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Hypervisor host name or UUID.
-  - `bond_name` *(string, required)*: Name for the bond device (e.g. `bond0`).
-  - `slaves` *(list[string], required)*: Physical NIC slave names (e.g. `['eth1', 'eth2']`).
-  - `mode` *(string, optional, default: 'active-backup')*: Bonding mode policy.
-- **Outputs:** `HostBondResult`
-
----
-
-### 98. `ovirt_host_bond_delete`
-
-Deletes a network bond interface from a hypervisor host, releasing slave interfaces back to standalone mode. Protected by safe-mode confirmation (`confirm=True`).
-
-- **Inputs:**
-  - `host_name_or_id` *(string, required)*: Hypervisor host name or UUID.
-  - `bond_name` *(string, required)*: Name of the bond to dismantle.
-  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
-- **Outputs:** `HostBondResult`
-
----
-
-### 99. `ovirt_user_tag_list`
-
-Lists inventory tags assigned to an oVirt / OLVM user.
-
-- **Inputs:**
-  - `user_name_or_id` *(string, required)*: Username or UUID of the user.
-- **Outputs:** `list[TagSummary]`
-
----
-
-### 100. `ovirt_user_tag_assign`
-
-Assigns an inventory tag to an oVirt / OLVM user.
-
-- **Inputs:**
-  - `user_name_or_id` *(string, required)*: Username or UUID of the user.
-  - `tag_name_or_id` *(string, required)*: Name or UUID of the inventory tag to assign.
-- **Outputs:** `TagAssignmentResult`
-
----
-
-### 101. `ovirt_user_tag_unassign`
-
-Unassigns an inventory tag from an oVirt / OLVM user.
-
-- **Inputs:**
-  - `user_name_or_id` *(string, required)*: Username or UUID of the user.
-  - `tag_name_or_id` *(string, required)*: Name or UUID of the inventory tag to unassign.
-- **Outputs:** `TagAssignmentResult`
-
----
-
-### 102. `ovirt_host_upgrade_check`
+### 46. `ovirt_host_upgrade_check`
 
 Checks if operating system or package updates are available for a hypervisor host. Triggers the oVirt / OLVM engine to query host package repositories via Ansible runner and updates the host's `update_available` flag.
 
@@ -2147,7 +1459,7 @@ Checks if operating system or package updates are available for a hypervisor hos
 
 ---
 
-### 103. `ovirt_host_upgrade`
+### 47. `ovirt_host_upgrade`
 
 Upgrades operating system packages and VDSM on a hypervisor host using the oVirt / OLVM host upgrade Ansible automation playbook.
 
@@ -2173,7 +1485,739 @@ Upgrades operating system packages and VDSM on a hypervisor host using the oVirt
 
 ---
 
-### 104. `ovirt_system_events`
+---
+
+### 48. `ovirt_host_nic_list`
+
+Lists physical network interfaces (pNICs) on a hypervisor host, including device name, MAC address, link speed in Mbps, link status (`up`/`down`), configured IPv4/IPv6 addresses, attached logical networks, and bonding slave memberships.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Host display name or UUID.
+- **Outputs:** `list[HostNicInfo]`
+
+---
+
+### 49. `ovirt_host_numa_list`
+
+Lists Non-Uniform Memory Access (NUMA) node topology for a hypervisor host, reporting node index, RAM memory allocated to each NUMA node in MB, and assigned physical CPU core IDs.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Host display name or UUID.
+- **Outputs:** `list[HostNumaNodeInfo]`
+
+---
+
+### 50. `ovirt_host_device_list`
+
+Lists hardware and PCI bus devices configured on a hypervisor host (SR-IOV virtual functions, GPU passthrough devices, Fibre Channel HBAs, network adapters).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Host display name or UUID.
+  - `max_devices` *(int, optional, default: 50)*: Maximum devices to return.
+- **Outputs:** `list[HostDeviceInfo]`
+  - `id`: PCI device address identifier.
+  - `name`: Device name.
+  - `product`: Hardware product description.
+  - `vendor`: Hardware vendor name.
+  - `driver`: Active kernel driver module.
+  - `iommu_group`: IOMMU group index for PCI passthrough.
+
+---
+
+### 51. `ovirt_host_storage_list`
+
+Lists storage domains and SAN/block storage server connections accessible to a hypervisor host.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Host display name or UUID.
+- **Outputs:** `list[dict]` containing storage domain ID, name, storage type, and target addresses.
+
+---
+
+### 52. `ovirt_host_events`
+
+Retrieves host-specific audit history, hardware alerts, SPM role elections, and operational events.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Host display name or UUID.
+  - `max_events` *(int, optional, default: 25)*: Maximum number of events to return.
+  - `severity` *(string, optional)*: Filter by severity (`'normal'`, `'warning'`, `'error'`, `'alert'`).
+- **Outputs:** `list[HostEvent]`
+  - `id`: Event ID.
+  - `code`: oVirt event code integer.
+  - `severity`: Event severity level.
+  - `description`: Event message.
+  - `timestamp`: Event timestamp.
+
+---
+
+### 53. `ovirt_affinity_label_list`
+
+Lists all global Affinity Labels registered in the oVirt/OLVM engine, including the hypervisor hosts and virtual machines assigned to each label.
+
+- **Inputs:** None.
+- **Outputs:** `list[AffinityLabelInfo]`
+  - `id`: UUID of the label.
+  - `name`: Human-readable label name.
+  - `hosts`: List of hypervisor host names currently bearing this label.
+  - `vms`: List of virtual machine names currently bearing this label.
+
+---
+
+### 54. `ovirt_affinity_label_create`
+
+Creates a new global Affinity Label in oVirt/OLVM.
+
+- **Inputs:**
+  - `name` *(string, required)*: Unique label name (e.g. `database-nodes`, `pci-passthrough-hosts`).
+- **Outputs:** `AffinityLabelResult`
+  - `success`: Whether creation succeeded.
+  - `label_id`: UUID of the created label.
+  - `label_name`: Name of the label.
+  - `message`: Outcome description.
+
+---
+
+### 55. `ovirt_affinity_label_delete`
+
+Deletes an Affinity Label. Protected by safe-mode confirmation (`confirm=True`). If the label is currently attached to hosts or VMs, oVirt requires detaching it first. Setting `detach_first=True` safely unassigns the label from all entities before deletion.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Label name or UUID.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
+  - `detach_first` *(bool, optional, default: False)*: Automatically unassign from all hosts and VMs before deleting to avoid HTTP 409 conflicts.
+- **Outputs:** `AffinityLabelResult`
+
+---
+
+### 56. `ovirt_host_label_list`
+
+Lists all Affinity Labels assigned to a specific hypervisor host.
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Host name or UUID.
+- **Outputs:** `list[str]` of affinity label names.
+
+---
+
+### 57. `ovirt_host_label_assign`
+
+Assigns an Affinity Label to a hypervisor host.
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Host name or UUID.
+  - `label_name_or_id` *(string, required)*: Affinity label name or UUID.
+- **Outputs:** `EntityLabelResult`
+  - `success`: Whether assignment succeeded.
+  - `entity_name`: Name of the host.
+  - `label_name`: Name of the assigned label.
+  - `current_labels`: Complete list of labels currently on this host.
+
+---
+
+### 58. `ovirt_host_label_unassign`
+
+Unassigns an Affinity Label from a hypervisor host (symmetric, reversible counterpart of `ovirt_host_label_assign`).
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Host name or UUID.
+  - `label_name_or_id` *(string, required)*: Affinity label name or UUID to remove.
+- **Outputs:** `EntityLabelResult`
+
+---
+
+### 59. `ovirt_vm_label_list`
+
+Lists all Affinity Labels assigned to a virtual machine.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM name or UUID.
+- **Outputs:** `list[str]` of affinity label names.
+
+---
+
+### 60. `ovirt_vm_label_assign`
+
+Assigns an Affinity Label to a virtual machine.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM name or UUID.
+  - `label_name_or_id` *(string, required)*: Affinity label name or UUID.
+- **Outputs:** `EntityLabelResult`
+
+---
+
+### 61. `ovirt_vm_label_unassign`
+
+Unassigns an Affinity Label from a virtual machine (symmetric, reversible counterpart of `ovirt_vm_label_assign`).
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM name or UUID.
+  - `label_name_or_id` *(string, required)*: Affinity label name or UUID to remove.
+- **Outputs:** `EntityLabelResult`
+
+---
+
+### 62. `ovirt_cluster_affinity_group_list`
+
+Lists all Affinity Groups defined within a cluster, including rules (positive/negative, enforcing), member VMs, member Hosts, and label associations.
+
+- **Inputs:**
+  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
+- **Outputs:** `list[AffinityGroupInfo]`
+  - `id`: UUID of the affinity group.
+  - `name`: Group name.
+  - `cluster_name`: Name of the cluster.
+  - `vms_rule`: `AffinityRuleConfig` (`enabled`, `positive`, `enforcing`).
+  - `hosts_rule`: `AffinityRuleConfig` (`enabled`, `positive`, `enforcing`).
+  - `vms`: Member VM names or IDs.
+  - `hosts`: Member Host names or IDs.
+  - `vm_labels`: Member VM label names.
+  - `host_labels`: Member Host label names.
+
+---
+
+### 63. `ovirt_cluster_affinity_group_get`
+
+Retrieves detailed configuration and member lists of a specific Affinity Group in a cluster.
+
+- **Inputs:**
+  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
+  - `group_name_or_id` *(string, required)*: Affinity group name or UUID.
+- **Outputs:** `AffinityGroupInfo`
+
+---
+
+### 64. `ovirt_cluster_affinity_group_create`
+
+Creates a new Affinity Group in a cluster with fine-grained VM-to-VM and VM-to-Host rules.
+
+- **Inputs:**
+  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
+  - `name` *(string, required)*: Unique name for the group.
+  - `description` *(string, optional)*: Purpose description.
+  - `priority` *(float, optional)*: Scheduling priority (e.g. `1.0` - `5.0`).
+  - `vm_positive` *(bool, optional, default: True)*: Positive VM affinity (`True`, run together) or anti-affinity (`False`, run on separate hypervisors).
+  - `vm_enforcing` *(bool, optional, default: False)*: Mandatory hard rule (`True`) vs. soft preference (`False`).
+  - `vm_enabled` *(bool, optional, default: True)*: Enable/disable the VM rule.
+  - `host_positive` *(bool, optional, default: True)*: Positive Host affinity (`True`, run on specified hosts) or negative (`False`, forbidden on specified hosts).
+  - `host_enforcing` *(bool, optional, default: False)*: Mandatory host enforcement (`True`) vs soft preference (`False`).
+  - `host_enabled` *(bool, optional, default: True)*: Enable/disable the Host rule.
+  - `vms` *(list[str], optional)*: List of member VM names or UUIDs.
+  - `hosts` *(list[str], optional)*: List of member Host names or UUIDs.
+  - `vm_labels` *(list[str], optional)*: List of member VM Affinity Label names or UUIDs.
+  - `host_labels` *(list[str], optional)*: List of member Host Affinity Label names or UUIDs.
+- **Outputs:** `AffinityGroupResult`
+
+---
+
+### 65. `ovirt_cluster_affinity_group_update`
+
+Updates rules, settings, or member lists of an existing Affinity Group.
+
+- **Inputs:**
+  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
+  - `group_name_or_id` *(string, required)*: Affinity group name or UUID.
+  - `name` *(string, optional)*: Rename group.
+  - `description` *(string, optional)*: Update description.
+  - `priority` *(float, optional)*: Update priority.
+  - `vm_positive` *(bool, optional)*: Update VM positive/anti-affinity rule.
+  - `vm_enforcing` *(bool, optional)*: Update VM enforcement.
+  - `host_positive` *(bool, optional)*: Update Host affinity rule.
+  - `host_enforcing` *(bool, optional)*: Update Host enforcement.
+  - `vms` *(list[str], optional)*: Replace complete list of member VMs.
+  - `hosts` *(list[str], optional)*: Replace complete list of member Hosts.
+  - `vm_labels` *(list[str], optional)*: Replace complete list of member VM labels.
+  - `host_labels` *(list[str], optional)*: Replace complete list of member Host labels.
+- **Outputs:** `AffinityGroupResult`
+
+---
+
+### 66. `ovirt_cluster_affinity_group_delete`
+
+Deletes an Affinity Group from a cluster. Protected by safe-mode confirmation (`confirm=True`).
+
+- **Inputs:**
+  - `cluster_name_or_id` *(string, required)*: Cluster name or UUID.
+  - `group_name_or_id` *(string, required)*: Affinity group name or UUID.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
+- **Outputs:** `AffinityGroupResult`
+
+---
+
+### 67. `ovirt_host_network_attachment_list`
+
+Lists all logical network attachments on a hypervisor host, resolving which oVirt network (e.g. `ovirtmgmt`) is attached to which physical NIC or bond (e.g. `eth0`), along with IPv4 assignment method, address, netmask, gateway, and in-sync status.
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Host name or UUID.
+- **Outputs:** `list[HostNetworkAttachmentInfo]`
+  - `id`: UUID of the attachment.
+  - `network_name`: Logical network name.
+  - `host_nic_name`: Physical NIC or bond name.
+  - `boot_protocol`: `static`, `dhcp`, or `none`.
+  - `ip_address`: Assigned IPv4 address.
+  - `in_sync`: Boolean indicating whether host network settings match engine definitions.
+
+---
+
+### 68. `ovirt_host_iscsi_discover`
+
+Discovers available iSCSI targets on a storage portal from the designated hypervisor host via OS kernel discovery.
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Host name or UUID.
+  - `address` *(string, required)*: IP address or hostname of the iSCSI portal (e.g. `192.0.2.10`).
+  - `port` *(int, optional, default: 3260)*: iSCSI portal port.
+  - `username` *(string, optional)*: CHAP username.
+  - `password` *(string, optional)*: CHAP password.
+- **Outputs:** `HostIscsiDiscoverResult`
+  - `targets`: List of discovered target IQN strings.
+  - `count`: Total count of targets found.
+
+---
+
+### 69. `ovirt_host_iscsi_login`
+
+Logs in to an iSCSI target portal from a hypervisor host, discovering LUN block devices (`/dev/mapper/...`).
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Host name or UUID.
+  - `address` *(string, required)*: iSCSI portal IP or hostname.
+  - `target` *(string, required)*: Target IQN to log in to.
+  - `port` *(int, optional, default: 3260)*: Portal port.
+  - `username` *(string, optional)*: CHAP username.
+  - `password` *(string, optional)*: CHAP password.
+- **Outputs:** `HostIscsiLoginResult`
+
+---
+
+### 70. `ovirt_host_network_sync`
+
+Synchronizes out-of-sync network attachments on a hypervisor host with engine definitions, featuring automatic connectivity rollback protection (`check_connectivity=True`).
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Host name or UUID.
+  - `network_attachment_id` *(string, optional)*: Specific attachment ID to synchronize. If omitted, synchronizes all out-of-sync attachments on the host.
+- **Outputs:** `HostNetworkSetupResult`
+
+---
+
+### 71. `ovirt_storage_domain_list`
+
+Lists all Storage Domains in oVirt / OLVM with capacity telemetry, storage protocols, format versions, and attached Data Centers.
+
+- **Inputs:** None.
+- **Outputs:** `list[StorageDomainSummary]`
+  - `id`: UUID of the storage domain.
+  - `name`: Domain name.
+  - `type`: Domain role (`data`, `iso`, `export`, `image`).
+  - `storage_type`: Protocol (`nfs`, `iscsi`, `fcp`, `glance`, `local`).
+  - `status`: `active`, `maintenance`, `unattached`, or `inactive`.
+  - `available_gb`: Free space in GB.
+  - `used_gb`: Used space in GB.
+  - `total_gb`: Total space in GB.
+  - `usage_percent`: Utilization percentage.
+  - `data_centers`: List of attached Data Center names.
+
+---
+
+### 72. `ovirt_storage_domain_get`
+
+Retrieves deep telemetry, thresholds, and stored object counts (disks, templates, VMs) for a Storage Domain.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Storage domain name or UUID.
+- **Outputs:** `StorageDomainDetail`
+  - `disks_count`: Number of virtual disks stored.
+  - `templates_count`: Number of VM templates stored.
+  - `vms_count`: Number of VMs stored.
+  - `supports_discard`: Boolean indicating TRIM / discard support.
+  - `warning_low_space_indicator`: Low space threshold percentage.
+  - `critical_space_action_blocker`: Critical blocking space threshold in GB.
+
+---
+
+### 73. `ovirt_storage_domain_create_nfs`
+
+Creates a new NFS Storage Domain initialized via a designated hypervisor host.
+
+- **Inputs:**
+  - `name` *(string, required)*: Unique name for the storage domain.
+  - `host_name_or_id` *(string, required)*: Hypervisor host responsible for initializing metadata.
+  - `address` *(string, required)*: NFS server IP or hostname (e.g. `192.0.2.20`).
+  - `path` *(string, required)*: NFS export path (e.g. `/exports/data`).
+  - `domain_type` *(string, optional, default: 'data')*: `data`, `iso`, or `export`.
+  - `nfs_version` *(string, optional, default: 'auto')*: `auto`, `v3`, `v4`, `v4_1`, `v4_2`.
+  - `description` *(string, optional)*: Description.
+- **Outputs:** `StorageDomainResult`
+
+---
+
+### 74. `ovirt_storage_domain_attach`
+
+Attaches a Storage Domain to a Data Center.
+
+- **Inputs:**
+  - `storage_domain_name_or_id` *(string, required)*: Storage domain name or UUID.
+  - `data_center_name_or_id` *(string, required)*: Target Data Center name or UUID.
+- **Outputs:** `StorageDomainResult`
+
+---
+
+### 75. `ovirt_storage_domain_activate`
+
+Activates an attached Storage Domain in a Data Center.
+
+- **Inputs:**
+  - `storage_domain_name_or_id` *(string, required)*: Storage domain name or UUID.
+  - `data_center_name_or_id` *(string, required)*: Data Center name or UUID.
+- **Outputs:** `StorageDomainResult`
+
+---
+
+### 76. `ovirt_storage_domain_maintenance`
+
+Moves an attached Storage Domain to maintenance mode in a Data Center (deactivate), preparing it for safe detachment.
+
+- **Inputs:**
+  - `storage_domain_name_or_id` *(string, required)*: Storage domain name or UUID.
+  - `data_center_name_or_id` *(string, required)*: Data Center name or UUID.
+- **Outputs:** `StorageDomainResult`
+
+---
+
+### 77. `ovirt_storage_domain_detach`
+
+Detaches a Storage Domain from a Data Center (symmetric, reversible counterpart of `ovirt_storage_domain_attach`). Domain must first be in maintenance mode.
+
+- **Inputs:**
+  - `storage_domain_name_or_id` *(string, required)*: Storage domain name or UUID.
+  - `data_center_name_or_id` *(string, required)*: Data Center name or UUID.
+- **Outputs:** `StorageDomainResult`
+
+---
+
+### 78. `ovirt_storage_domain_delete`
+
+Deletes or unregisters a Storage Domain from oVirt / OLVM. Protected by safe-mode confirmation (`confirm=True`). If the domain is currently attached to an active Data Center, deletion is blocked by pre-flight guards to protect data integrity.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Storage domain name or UUID.
+  - `host_name_or_id` *(string, optional)*: Hypervisor host executing the deletion/format.
+  - `format` *(bool, optional, default: False)*: Whether to wipe/format storage metadata.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
+- **Outputs:** `StorageDomainResult`
+
+---
+
+### 79. `ovirt_template_list`
+
+Lists all virtual machine templates and golden images in the virtualization environment, including the system Blank template, custom images, hardware specs (vCPU, RAM), and versioning.
+
+- **Inputs:**
+  - `search` *(string, optional)*: Filter query (e.g. `name=gold*`, `status=ok`).
+- **Outputs:** `list[TemplateSummary]`
+
+---
+
+### 80. `ovirt_template_get`
+
+Retrieves deep technical configuration and hardware profile of an oVirt / OLVM template, including attached disk references, NIC count, CPU topology, memory, and OS type.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Template name or UUID.
+- **Outputs:** `TemplateDetail`
+
+---
+
+### 81. `ovirt_template_create_from_vm`
+
+Creates a new reusable template / golden image from an existing virtual machine. The source virtual machine must be powered off (`down`) to snapshot disk images.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: Name or UUID of the source virtual machine.
+  - `template_name` *(string, required)*: Name for the new template.
+  - `description` *(string, optional)*: Optional descriptive text.
+  - `wait` *(bool, optional, default: True)*: Whether to synchronously block until template provisioning finishes.
+  - `timeout` *(int, optional, default: 300)*: Maximum wait time in seconds.
+- **Outputs:** `TemplateResult`
+
+---
+
+### 82. `ovirt_template_delete`
+
+Deletes an oVirt / OLVM template from the environment. Protected by safe-mode confirmation (`confirm=True`). The system Blank template is permanently protected from deletion by pre-flight guards.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Template name or UUID.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
+  - `wait` *(bool, optional, default: True)*: Whether to synchronously block until removal completes.
+  - `timeout` *(int, optional, default: 180)*: Maximum wait time in seconds.
+- **Outputs:** `TemplateResult`
+
+---
+
+### 83. `ovirt_datacenter_list`
+
+Lists all Data Centers in the virtualization environment, including status (`up`, `uninitialized`), storage type (`shared`, `local`), compatibility version, and quota mode.
+
+- **Inputs:**
+  - `search` *(string, optional)*: Filter query (e.g. `status=up`, `name=Home*`).
+- **Outputs:** `list[DataCenterSummary]`
+
+---
+
+### 84. `ovirt_datacenter_get`
+
+Retrieves complete technical specification of a Data Center, including attached clusters, attached Storage Domains, and defined logical networks.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Data Center name or UUID.
+- **Outputs:** `DataCenterDetail`
+
+---
+
+### 85. `ovirt_quota_list`
+
+Lists resource quotas defined across Data Centers or filtered by a specific Data Center.
+
+- **Inputs:**
+  - `data_center` *(string, optional)*: Data Center name or UUID filter.
+- **Outputs:** `list[QuotaSummary]`
+
+---
+
+### 86. `ovirt_quota_get`
+
+Retrieves detailed compute and storage limitations defined by a quota, including vCPU limits, memory limits, and storage domain space ceilings.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Quota name or UUID.
+  - `data_center` *(string, optional)*: Data Center name or UUID scoping the search.
+- **Outputs:** `QuotaDetail`
+
+---
+
+### 87. `ovirt_quota_create`
+
+Creates a new resource quota under a designated Data Center.
+
+- **Inputs:**
+  - `name` *(string, required)*: Name for the new quota.
+  - `data_center` *(string, required)*: Name or UUID of the parent Data Center.
+  - `description` *(string, optional)*: Optional descriptive notes.
+- **Outputs:** `QuotaResult`
+
+---
+
+### 88. `ovirt_quota_delete`
+
+Deletes a resource quota from a Data Center. Protected by safe-mode confirmation (`confirm=True`). The system Default quota is protected by pre-flight guards.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Quota name or UUID.
+  - `data_center` *(string, required)*: Name or UUID of the parent Data Center.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
+- **Outputs:** `QuotaResult`
+
+---
+
+### 89. `ovirt_network_list`
+
+Lists logical networks across Data Centers or filtered by Data Center, including 802.1Q VLAN encapsulation tag, MTU, and status.
+
+- **Inputs:**
+  - `data_center` *(string, optional)*: Data Center name or UUID filter.
+- **Outputs:** `list[LogicalNetworkSummary]`
+
+---
+
+### 90. `ovirt_network_get`
+
+Retrieves deep technical configuration and operational details of a specific logical network, including MTU size, 802.1Q VLAN tagging, Spanning Tree Protocol (STP), port isolation, assigned network usages (`vm`, `management`, `display`), and attached vNIC profiles.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Logical network display name or UUID.
+  - `data_center` *(string, optional)*: Parent Data Center name or UUID scoping the search.
+- **Outputs:** `LogicalNetworkDetail`
+  - `id`: Logical network UUID.
+  - `name`: Network name (e.g. `'ovirtmgmt'`).
+  - `data_center_id`: Parent Data Center UUID.
+  - `vlan_id`: 802.1Q VLAN tag ID if configured.
+  - `mtu`: MTU payload size.
+  - `stp`: Whether Spanning Tree Protocol is enabled.
+  - `port_isolation`: Whether port isolation is enforced.
+  - `usages`: List of active usages (`vm`, `management`, `display`).
+  - `vnic_profiles`: List of profiles attached to this logical network.
+
+---
+
+### 91. `ovirt_network_create`
+
+Creates a new logical network in a Data Center with optional VLAN tagging and custom MTU (e.g. jumbo frames).
+
+- **Inputs:**
+  - `name` *(string, required)*: Name for the logical network.
+  - `data_center` *(string, required)*: Name or UUID of the parent Data Center.
+  - `vlan_id` *(int, optional)*: Optional 802.1Q VLAN encapsulation tag (1-4094).
+  - `mtu` *(int, optional)*: Optional MTU payload size (e.g. 1500, 9000).
+  - `description` *(string, optional)*: Optional descriptive notes.
+- **Outputs:** `LogicalNetworkResult`
+
+---
+
+### 92. `ovirt_network_delete`
+
+Deletes a logical network from a Data Center. Protected by safe-mode confirmation (`confirm=True`). The default management network `ovirtmgmt` is permanently protected from deletion.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Network name or UUID.
+  - `data_center` *(string, optional)*: Data Center name or UUID scoping the search.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
+- **Outputs:** `LogicalNetworkResult`
+
+---
+
+### 93. `ovirt_tag_list`
+
+Lists hierarchical inventory tags in the oVirt / OLVM virtualization environment, including tag UUID, display name, description, and parent link.
+
+- **Inputs:**
+  - `search` *(string, optional)*: Optional search query.
+- **Outputs:** `list[TagSummary]`
+
+---
+
+### 94. `ovirt_tag_create`
+
+Creates a new inventory tag in oVirt / OLVM with optional parent hierarchical nesting.
+
+- **Inputs:**
+  - `name` *(string, required)*: Name for the new tag.
+  - `description` *(string, optional)*: Optional descriptive text.
+  - `parent` *(string, optional)*: Optional parent tag name or UUID for hierarchical nesting.
+- **Outputs:** `TagResult`
+
+---
+
+### 95. `ovirt_tag_delete`
+
+Deletes an inventory tag from oVirt / OLVM. Protected by safe-mode confirmation (`confirm=True`). The system root tag is protected from removal.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Tag name or UUID.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
+- **Outputs:** `TagResult`
+
+---
+
+### 96. `ovirt_vm_tag_assign`
+
+Assigns an inventory tag to a virtual machine.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: Virtual machine name or UUID.
+  - `tag_name_or_id` *(string, required)*: Tag name or UUID.
+- **Outputs:** `TagAssignmentResult`
+
+---
+
+### 97. `ovirt_vm_tag_unassign`
+
+Unassigns an inventory tag from a virtual machine.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: Virtual machine name or UUID.
+  - `tag_name_or_id` *(string, required)*: Tag name or UUID.
+- **Outputs:** `TagAssignmentResult`
+
+---
+
+### 98. `ovirt_host_tag_assign`
+
+Assigns an inventory tag to a hypervisor host.
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Hypervisor host name or UUID.
+  - `tag_name_or_id` *(string, required)*: Tag name or UUID.
+- **Outputs:** `TagAssignmentResult`
+
+---
+
+### 99. `ovirt_host_tag_unassign`
+
+Unassigns an inventory tag from a hypervisor host.
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Hypervisor host name or UUID.
+  - `tag_name_or_id` *(string, required)*: Tag name or UUID.
+- **Outputs:** `TagAssignmentResult`
+
+---
+
+### 100. `ovirt_user_tag_list`
+
+Lists inventory tags assigned to an oVirt / OLVM user.
+
+- **Inputs:**
+  - `user_name_or_id` *(string, required)*: Username or UUID of the user.
+- **Outputs:** `list[TagSummary]`
+
+---
+
+### 101. `ovirt_user_tag_assign`
+
+Assigns an inventory tag to an oVirt / OLVM user.
+
+- **Inputs:**
+  - `user_name_or_id` *(string, required)*: Username or UUID of the user.
+  - `tag_name_or_id` *(string, required)*: Name or UUID of the inventory tag to assign.
+- **Outputs:** `TagAssignmentResult`
+
+---
+
+### 102. `ovirt_user_tag_unassign`
+
+Unassigns an inventory tag from an oVirt / OLVM user.
+
+- **Inputs:**
+  - `user_name_or_id` *(string, required)*: Username or UUID of the user.
+  - `tag_name_or_id` *(string, required)*: Name or UUID of the inventory tag to unassign.
+- **Outputs:** `TagAssignmentResult`
+
+---
+
+---
+
+### 103. `ovirt_host_bond_create`
+
+Creates a bonded network interface on a hypervisor host combining 2 or more physical interfaces. Supports active-backup, 802.3ad (LACP), balance-rr, and custom bond modes.
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Hypervisor host name or UUID.
+  - `bond_name` *(string, required)*: Name for the bond device (e.g. `bond0`).
+  - `slaves` *(list[string], required)*: Physical NIC slave names (e.g. `['eth1', 'eth2']`).
+  - `mode` *(string, optional, default: 'active-backup')*: Bonding mode policy.
+- **Outputs:** `HostBondResult`
+
+---
+
+### 104. `ovirt_host_bond_delete`
+
+Deletes a network bond interface from a hypervisor host, releasing slave interfaces back to standalone mode. Protected by safe-mode confirmation (`confirm=True`).
+
+- **Inputs:**
+  - `host_name_or_id` *(string, required)*: Hypervisor host name or UUID.
+  - `bond_name` *(string, required)*: Name of the bond to dismantle.
+  - `confirm` *(bool, optional, default: False)*: Confirmation flag required in safe-mode.
+- **Outputs:** `HostBondResult`
+
+---
+
+---
+
+### 105. `ovirt_system_events`
 
 Retrieves global audit log events, errors, warnings, alerts, and operational messages across the entire virtualization environment (hosts, VMs, storage domains, clusters). Supports filtering by severity level (`'alert'`, `'error'`, `'warning'`, `'normal'`), custom search queries, and pagination with `max_events` and `from_event_id`.
 
@@ -2229,7 +2273,7 @@ Retrieves global audit log events, errors, warnings, alerts, and operational mes
 
 ---
 
-### 105. `ovirt_user_list`
+### 106. `ovirt_user_list`
 
 Lists user accounts registered in oVirt / OLVM across all authorization domains (e.g. `internal-authz`, Active Directory, LDAP, Keycloak). Supports filtering via standard oVirt search query expressions and pagination limits.
 
@@ -2264,7 +2308,7 @@ Lists user accounts registered in oVirt / OLVM across all authorization domains 
 
 ---
 
-### 106. `ovirt_user_get`
+### 107. `ovirt_user_get`
 
 Retrieves comprehensive account information for a specific user, including assigned authorization roles and total discrete permission grants count.
 
@@ -2292,7 +2336,7 @@ Retrieves comprehensive account information for a specific user, including assig
 
 ---
 
-### 107. `ovirt_user_add`
+### 108. `ovirt_user_add`
 
 Imports and registers a user from an external or internal authorization provider / directory service (e.g. `internal-authz`, LDAP, Active Directory, Keycloak) into the virtualization engine.
 
@@ -2322,7 +2366,7 @@ Imports and registers a user from an external or internal authorization provider
 
 ---
 
-### 108. `ovirt_user_delete`
+### 109. `ovirt_user_delete`
 
 De-registers and removes a user account from the oVirt / OLVM virtualization engine.
 
@@ -2353,7 +2397,7 @@ De-registers and removes a user account from the oVirt / OLVM virtualization eng
 
 ---
 
-### 109. `ovirt_role_list`
+### 110. `ovirt_role_list`
 
 Lists authorization roles defined in the system (e.g. `SuperUser`, `DataCenterAdmin`, `ClusterAdmin`, `UserRole`, `PowerUserRole`). Allows filtering for administrative roles only or standard user roles only.
 
@@ -2388,7 +2432,44 @@ Lists authorization roles defined in the system (e.g. `SuperUser`, `DataCenterAd
 
 ---
 
-### 110. `ovirt_permission_list`
+### 111. `ovirt_role_add`
+
+Creates a new custom authorization role in oVirt / OLVM with a granular list of administrative or user permits. Enables enterprise governance and least-privilege security scoping for automation and AI agents.
+
+- **Inputs:**
+  - `name` *(string, required)*: Unique name for the custom role.
+  - `permits` *(list[string], required)*: List of permit names to assign to the role (e.g. `["create_vm", "edit_vm_properties", "change_vm_cd"]`).
+  - `administrative` *(bool, optional, default: false)*: Whether this is an administrative role or a regular user role.
+  - `description` *(string, optional)*: Optional descriptive summary of the role.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs:** `RoleResult`
+  - `success`: `true` if role was created.
+  - `action`: `"create"`.
+  - `role_id`: UUID of the newly created role.
+  - `role_name`: Name of the role.
+  - `message`: Outcome description.
+
+---
+
+### 112. `ovirt_role_delete`
+
+Deletes a custom authorization role from oVirt / OLVM. Built-in system roles (e.g., `SuperUser`, `UserRole`, `PowerUserRole`, `ClusterAdmin`, `DataCenterAdmin`) are permanently protected and immutable.
+
+> **Safe Mode Protection:** Deleting an authorization role modifies system access control and requires `confirm=True` in Safe Mode.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Role name or UUID to delete.
+  - `confirm` *(bool, optional, default: false)*: Confirmation flag required in Safe Mode.
+- **Outputs:** `RoleResult`
+  - `success`: `true` if role was deleted.
+  - `action`: `"delete"`.
+  - `role_id`: UUID of deleted role.
+  - `role_name`: Name of deleted role.
+  - `message`: Outcome description.
+
+---
+
+### 113. `ovirt_permission_list`
 
 Lists authorization permission grants across the virtualization environment. Supports filtering by specific target user or role to inspect the current privilege topology.
 
@@ -2423,7 +2504,7 @@ Lists authorization permission grants across the virtualization environment. Sup
 
 ---
 
-### 111. `ovirt_permission_add`
+### 114. `ovirt_permission_add`
 
 Grants an authorization role to a user on a target entity or system-wide.
 
@@ -2461,7 +2542,7 @@ Grants an authorization role to a user on a target entity or system-wide.
 
 ---
 
-### 112. `ovirt_permission_remove`
+### 115. `ovirt_permission_remove`
 
 Revokes and removes an authorization permission grant from oVirt / OLVM by its permission UUID.
 
@@ -2491,6 +2572,206 @@ Revokes and removes an authorization permission grant from oVirt / OLVM by its p
   "message": "Permission grant 'bb401290-7819-4821-b012-990011223344' (role: 'PowerUserRole', user: 'mcp-service@internal-authz') successfully revoked."
 }
 ```
+
+---
+
+### 116. `ovirt_vm_pool_list`
+
+Lists all Virtual Machine Pools (VDI, on-demand developer pools) in the environment, reporting pool name, cluster, template, capacity, pre-started VMs, max VMs per user, and allocation status.
+
+- **Inputs:**
+  - `search` *(string, optional)*: Search filter query.
+- **Outputs:** `list[VmPoolSummary]`
+  - `id`: Pool UUID.
+  - `name`: Pool display name.
+  - `cluster_name`: Parent cluster name.
+  - `template_name`: Base template name.
+  - `size`: Total number of VMs configured in the pool.
+  - `prestarted_vms`: Number of hot standby VMs kept powered on.
+  - `max_user_vms`: Maximum number of VMs a single user may allocate simultaneously.
+  - `type`: Pool type (`"automatic"` or `"manual"`).
+  - `stateful`: Whether VM changes persist across allocations.
+
+---
+
+### 117. `ovirt_vm_pool_get`
+
+Retrieves deep technical configuration of a VM Pool, including a full inventory of all member virtual machines, their power states, and runtime user allocations.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM Pool name or UUID.
+- **Outputs:** `VmPoolDetail`
+  - `vms`: List of all member virtual machines and their current states.
+  - `allocated_vms_count`: Number of VMs currently acquired by users.
+
+---
+
+### 118. `ovirt_vm_pool_create`
+
+Creates a new Virtual Machine Pool based on a designated cluster and template.
+
+> **Safe Mode Protection:** Creating a VM pool provisions multiple VM instances and storage images; requires `confirm=True` in Safe Mode.
+
+- **Inputs:**
+  - `name` *(string, required)*: Name for the VM Pool.
+  - `cluster` *(string, required)*: Cluster name or UUID.
+  - `template` *(string, required)*: Base template name or UUID.
+  - `size` *(int, optional, default: 1)*: Total number of VMs in the pool.
+  - `prestarted_vms` *(int, optional, default: 0)*: Number of standby running VMs.
+  - `max_user_vms` *(int, optional, default: 1)*: Allocation ceiling per user.
+  - `description` *(string, optional)*: Optional description.
+  - `type` *(string, optional, default: "automatic")*: Pool type (`"automatic"` or `"manual"`).
+  - `stateful` *(bool, optional, default: false)*: Whether member VMs retain state on logout.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs:** `VmPoolResult`
+
+---
+
+### 119. `ovirt_vm_pool_update`
+
+Modifies runtime and capacity parameters of an existing Virtual Machine Pool (e.g. scaling up pool size, adjusting pre-started instances).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM Pool name or UUID.
+  - `size` *(int, optional)*: New total pool size.
+  - `prestarted_vms` *(int, optional)*: New number of pre-started VMs.
+  - `max_user_vms` *(int, optional)*: New user allocation limit.
+  - `description` *(string, optional)*: New description.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs:** `VmPoolResult`
+
+---
+
+### 120. `ovirt_vm_pool_delete`
+
+Deletes a Virtual Machine Pool and cleans up unallocated pool-managed virtual machines.
+
+> **Safe Mode Protection:** Deleting a VM pool destroys pool definitions and member instances; requires `confirm=True` in Safe Mode.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM Pool name or UUID to delete.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs:** `VmPoolResult`
+
+---
+
+### 121. `ovirt_vm_pool_allocate_vm`
+
+Acquires and allocates an available virtual machine from a VM Pool for the requesting user or caller. If a pre-started VM is ready, it is immediately assigned; otherwise, a member VM is started on-demand.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM Pool name or UUID.
+- **Outputs:** `VmPoolResult`
+  - `vm_id`: UUID of the allocated virtual machine.
+  - `vm_name`: Name of the allocated virtual machine.
+
+---
+
+### 122. `ovirt_vm_checkpoint_list`
+
+Lists all Changed Block Tracking (CBT) incremental checkpoints for a virtual machine, reporting checkpoint UUIDs, parent checkpoint linkage in the backup chain, creation timestamps, and tracked disk devices.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: Virtual machine display name or UUID.
+- **Outputs:** `list[VmCheckpointInfo]`
+  - `id`: Checkpoint UUID.
+  - `vm_id`: VM UUID.
+  - `vm_name`: VM name.
+  - `parent_id`: Parent checkpoint UUID if part of an incremental chain.
+  - `creation_date`: ISO timestamp when checkpoint was recorded.
+  - `disk_ids`: List of virtual disk UUIDs tracked by this checkpoint bitmap.
+
+---
+
+### 123. `ovirt_vm_checkpoint_get`
+
+Retrieves detailed technical information for a specific CBT checkpoint on a virtual machine.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM name or UUID.
+  - `checkpoint_id` *(string, required)*: Checkpoint UUID.
+- **Outputs:** `VmCheckpointInfo`
+
+---
+
+### 124. `ovirt_vm_checkpoint_delete`
+
+Deletes a CBT checkpoint from a virtual machine and cleans up the associated QEMU block dirty tracking bitmaps.
+
+> **Safe Mode Protection:** Deleting a checkpoint disrupts the incremental backup chain; requires `confirm=True` in Safe Mode.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM name or UUID.
+  - `checkpoint_id` *(string, required)*: Checkpoint UUID to delete.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs:** `BackupOperationResult`
+
+---
+
+### 125. `ovirt_vm_backup_list`
+
+Lists all live VM backup sessions (in-progress, ready, succeeded, failed) associated with a virtual machine.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM display name or UUID.
+- **Outputs:** `list[VmBackupInfo]`
+  - `id`: Backup session UUID.
+  - `phase`: Current phase (`initializing`, `ready`, `finalizing`, `succeeded`, `failed`).
+  - `creation_date`: ISO initiation timestamp.
+  - `from_checkpoint_id`: Parent checkpoint UUID (present if incremental CBT backup).
+  - `to_checkpoint_id`: New checkpoint UUID created by this backup.
+  - `disk_ids`: Disks included in backup.
+  - `snapshot_id`: Internal snapshot UUID used for storage consistency.
+
+---
+
+### 126. `ovirt_vm_backup_get`
+
+Retrieves the real-time operational status and transfer readiness of a VM backup session.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM display name or UUID.
+  - `backup_id` *(string, required)*: Backup session UUID.
+- **Outputs:** `VmBackupInfo`
+
+---
+
+### 127. `ovirt_vm_backup_start`
+
+Initiates an enterprise live VM backup session using QEMU incremental backup / CBT technology. Supports full backups or incremental backups (by supplying `from_checkpoint_id`). When initiated, oVirt creates scratch disks and prepares NBD / image transfers without interrupting VM execution.
+
+> **Safe Mode Protection:** Initiating live backups impacts storage I/O and creates scratch images; requires `confirm=True` in Safe Mode.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM display name or UUID.
+  - `from_checkpoint_id` *(string, optional)*: Previous checkpoint UUID for incremental CBT backup. Leave `null` for full backup.
+  - `disk_ids` *(list[string], optional)*: Optional list of specific disk UUIDs to back up. If omitted, all VM disks are included.
+  - `description` *(string, optional)*: Optional backup session label or comment.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs:** `BackupOperationResult`
+  - `status`: `"initiated"`.
+  - `backup_id`: Newly created backup session UUID.
+  - `checkpoint_id`: Target checkpoint UUID.
+  - `phase`: Backup phase (e.g. `"initializing"`).
+  - `message`: Outcome description.
+
+---
+
+### 128. `ovirt_vm_backup_finalize`
+
+Finalizes a VM backup session after backup software completes transferring disk data. Releases scratch disks, tears down NBD transfer endpoints, and commits the CBT checkpoint.
+
+> **Safe Mode Protection:** Finalizing merges disk scratch overlays; requires `confirm=True` in Safe Mode.
+
+- **Inputs:**
+  - `vm_name_or_id` *(string, required)*: VM display name or UUID.
+  - `backup_id` *(string, required)*: Backup session UUID to finalize.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs:** `BackupOperationResult`
+  - `status`: `"finalized"`.
+  - `backup_id`: Finalized backup UUID.
+  - `phase`: `"finalizing"`.
+  - `message`: Outcome description.
 
 ---
 

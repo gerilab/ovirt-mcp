@@ -15,6 +15,11 @@ from ovirt_mcp.models.affinity import (
     AffinityLabelResult,
     EntityLabelResult,
 )
+from ovirt_mcp.models.backup import (
+    BackupOperationResult,
+    VmBackupInfo,
+    VmCheckpointInfo,
+)
 from ovirt_mcp.models.compute import (
     VmConsoleTicket,
     VmGraphicsConsoleInfo,
@@ -52,6 +57,7 @@ from ovirt_mcp.models.host_network import (
     HostNetworkSetupResult,
 )
 from ovirt_mcp.models.logical_network import (
+    LogicalNetworkDetail,
     LogicalNetworkResult,
     LogicalNetworkSummary,
 )
@@ -88,6 +94,7 @@ from ovirt_mcp.models.template import (
 from ovirt_mcp.models.user import (
     PermissionResult,
     PermissionSummary,
+    RoleResult,
     RoleSummary,
     UserDetail,
     UserResult,
@@ -104,6 +111,11 @@ from ovirt_mcp.models.vm import (
     VmSnapshotInfo,
     VmSnapshotResult,
     VmSummary,
+)
+from ovirt_mcp.models.vm_pool import (
+    VmPoolDetail,
+    VmPoolResult,
+    VmPoolSummary,
 )
 from ovirt_mcp.tools.affinity import (
     ovirt_affinity_label_create as create_affinity_label_tool,
@@ -146,6 +158,15 @@ from ovirt_mcp.tools.affinity import (
 )
 from ovirt_mcp.tools.affinity import (
     ovirt_vm_label_unassign as unassign_vm_label_tool,
+)
+from ovirt_mcp.tools.backups import (
+    delete_vm_checkpoint_tool,
+    finalize_vm_backup_tool,
+    get_vm_backup_tool,
+    get_vm_checkpoint_tool,
+    list_vm_backups_tool,
+    list_vm_checkpoints_tool,
+    start_vm_backup_tool,
 )
 from ovirt_mcp.tools.compute import (
     get_vm_console_ticket_tool,
@@ -201,6 +222,7 @@ from ovirt_mcp.tools.hosts_network import (
 from ovirt_mcp.tools.logical_networks import (
     create_logical_network_tool,
     delete_logical_network_tool,
+    get_logical_network_tool,
     list_logical_networks_tool,
 )
 from ovirt_mcp.tools.media import (
@@ -265,13 +287,23 @@ from ovirt_mcp.tools.templates import (
 )
 from ovirt_mcp.tools.users import (
     add_permission_tool,
+    add_role_tool,
     add_user_tool,
+    delete_role_tool,
     delete_user_tool,
     get_user_tool,
     list_permissions_tool,
     list_roles_tool,
     list_users_tool,
     remove_permission_tool,
+)
+from ovirt_mcp.tools.vm_pools import (
+    allocate_vm_pool_vm_tool,
+    create_vm_pool_tool,
+    delete_vm_pool_tool,
+    get_vm_pool_tool,
+    list_vm_pools_tool,
+    update_vm_pool_tool,
 )
 from ovirt_mcp.tools.vms import (
     commit_vm_snapshot_tool,
@@ -2063,6 +2095,18 @@ def ovirt_network_list(data_center: str | None = None) -> list[LogicalNetworkSum
 
 
 @mcp.tool(
+    name="ovirt_network_get",
+    description=(
+        "Retrieve detailed configuration, VLAN tag, MTU, STP state, port isolation, "
+        "usages, and associated vNIC profile names for a specific logical network."
+    ),
+)
+def ovirt_network_get(name_or_id: str) -> LogicalNetworkDetail:
+    """Retrieve detailed configuration for a logical network."""
+    return get_logical_network_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
     name="ovirt_network_create",
     description=(
         "Create a new logical network in a Data Center with optional VLAN tagging and custom MTU."
@@ -2400,6 +2444,46 @@ def ovirt_role_list(
 
 
 @mcp.tool(
+    name="ovirt_role_add",
+    description=(
+        "Create a new custom authorization role with granular operational permits. "
+        "Enables enterprise least-privilege governance (e.g. 'BackupOperator', 'DevOpsEngineer'). "
+        "If administrative=True, requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_role_add(
+    name: str,
+    description: str | None = None,
+    administrative: bool = False,
+    permits: list[str] | None = None,
+    confirm: bool = False,
+) -> RoleResult:
+    """Create a new authorization role."""
+    return add_role_tool(
+        name=name,
+        description=description,
+        administrative=administrative,
+        permits=permits,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_role_delete",
+    description=(
+        "Delete a custom authorization role from oVirt / OLVM. "
+        "Protected by Safe Mode (confirm=True required) and immutability guard (built-in system roles cannot be deleted)."
+    ),
+)
+def ovirt_role_delete(
+    name_or_id: str,
+    confirm: bool = False,
+) -> RoleResult:
+    """Delete a custom authorization role."""
+    return delete_role_tool(name_or_id=name_or_id, confirm=confirm)
+
+
+@mcp.tool(
     name="ovirt_permission_list",
     description=(
         "List authorization permissions granted to users across the virtualization environment. "
@@ -2454,6 +2538,233 @@ def ovirt_permission_remove(
 ) -> PermissionResult:
     """Revoke an authorization permission grant."""
     return remove_permission_tool(permission_id=permission_id, confirm=confirm)
+
+
+# ── Virtual Machine Pool Tools ───────────────────────────────────────────────
+
+
+@mcp.tool(
+    name="ovirt_vm_pool_list",
+    description=(
+        "List Virtual Machine Pools (VDI, on-demand pools) defined across clusters in oVirt / OLVM. "
+        "Supports filtering by cluster name or UUID, and search query expressions."
+    ),
+)
+def ovirt_vm_pool_list(
+    cluster: str | None = None,
+    search: str | None = None,
+) -> list[VmPoolSummary]:
+    """List Virtual Machine Pools."""
+    return list_vm_pools_tool(cluster=cluster, search=search)
+
+
+@mcp.tool(
+    name="ovirt_vm_pool_get",
+    description=(
+        "Retrieve detailed configuration, provisioned size, pre-started standby count, "
+        "and names of member virtual machines for a specific VM Pool."
+    ),
+)
+def ovirt_vm_pool_get(name_or_id: str) -> VmPoolDetail:
+    """Retrieve detailed specification and member VMs for a VM Pool."""
+    return get_vm_pool_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_vm_pool_create",
+    description=(
+        "Create a new Virtual Machine Pool from a template on a cluster. "
+        "Allows configuring total size, prestarted standby VMs, max VMs per user, and allocation type. "
+        "Safe Mode protected: requires confirm=True."
+    ),
+)
+def ovirt_vm_pool_create(
+    name: str,
+    cluster: str,
+    template: str,
+    size: int = 1,
+    prestarted_vms: int = 0,
+    max_user_vms: int = 1,
+    description: str | None = None,
+    pool_type: str = "automatic",
+    confirm: bool = False,
+) -> VmPoolResult:
+    """Create a new Virtual Machine Pool."""
+    return create_vm_pool_tool(
+        name=name,
+        cluster=cluster,
+        template=template,
+        size=size,
+        prestarted_vms=prestarted_vms,
+        max_user_vms=max_user_vms,
+        description=description,
+        pool_type=pool_type,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_pool_update",
+    description=(
+        "Update Virtual Machine Pool capacity (size), prestarted standby count, max VMs per user, or description. "
+        "Altering pool capacity requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_vm_pool_update(
+    name_or_id: str,
+    size: int | None = None,
+    prestarted_vms: int | None = None,
+    max_user_vms: int | None = None,
+    description: str | None = None,
+    confirm: bool = False,
+) -> VmPoolResult:
+    """Update Virtual Machine Pool parameters."""
+    return update_vm_pool_tool(
+        name_or_id=name_or_id,
+        size=size,
+        prestarted_vms=prestarted_vms,
+        max_user_vms=max_user_vms,
+        description=description,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_pool_delete",
+    description=(
+        "Delete a Virtual Machine Pool from oVirt / OLVM. "
+        "Destructive action: requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_vm_pool_delete(
+    name_or_id: str,
+    confirm: bool = False,
+) -> VmPoolResult:
+    """Delete a Virtual Machine Pool."""
+    return delete_vm_pool_tool(name_or_id=name_or_id, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_vm_pool_allocate_vm",
+    description=(
+        "Acquire and allocate an available virtual machine from a VM Pool for the caller/user."
+    ),
+)
+def ovirt_vm_pool_allocate_vm(name_or_id: str) -> VmPoolResult:
+    """Allocate an available virtual machine from a VM Pool."""
+    return allocate_vm_pool_vm_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_vm_checkpoint_list",
+    description=("List all CBT (Changed Block Tracking) checkpoints for a virtual machine."),
+)
+def ovirt_vm_checkpoint_list(vm_name_or_id: str) -> list[VmCheckpointInfo]:
+    """List all CBT checkpoints for a virtual machine."""
+    return list_vm_checkpoints_tool(vm_name_or_id=vm_name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_vm_checkpoint_get",
+    description=("Get details of a specific CBT checkpoint on a virtual machine."),
+)
+def ovirt_vm_checkpoint_get(
+    vm_name_or_id: str,
+    checkpoint_id: str,
+) -> VmCheckpointInfo:
+    """Get details of a specific CBT checkpoint."""
+    return get_vm_checkpoint_tool(
+        vm_name_or_id=vm_name_or_id,
+        checkpoint_id=checkpoint_id,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_checkpoint_delete",
+    description=(
+        "Delete a CBT checkpoint from a virtual machine (removes block tracking metadata). "
+        "Destructive action: requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_vm_checkpoint_delete(
+    vm_name_or_id: str,
+    checkpoint_id: str,
+    confirm: bool = False,
+) -> BackupOperationResult:
+    """Delete a CBT checkpoint from a virtual machine."""
+    return delete_vm_checkpoint_tool(
+        vm_name_or_id=vm_name_or_id,
+        checkpoint_id=checkpoint_id,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_backup_list",
+    description=("List all backup sessions (active or completed) for a virtual machine."),
+)
+def ovirt_vm_backup_list(vm_name_or_id: str) -> list[VmBackupInfo]:
+    """List all backup sessions for a virtual machine."""
+    return list_vm_backups_tool(vm_name_or_id=vm_name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_vm_backup_get",
+    description=("Get details and current phase of a specific VM backup session."),
+)
+def ovirt_vm_backup_get(
+    vm_name_or_id: str,
+    backup_id: str,
+) -> VmBackupInfo:
+    """Get details of a specific VM backup session."""
+    return get_vm_backup_tool(
+        vm_name_or_id=vm_name_or_id,
+        backup_id=backup_id,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_backup_start",
+    description=(
+        "Initiate a live VM backup session (full backup or incremental CBT backup). "
+        "Mutating action: requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_vm_backup_start(
+    vm_name_or_id: str,
+    from_checkpoint_id: str | None = None,
+    disk_ids: list[str] | None = None,
+    description: str | None = None,
+    confirm: bool = False,
+) -> BackupOperationResult:
+    """Initiate a live VM backup session."""
+    return start_vm_backup_tool(
+        vm_name_or_id=vm_name_or_id,
+        from_checkpoint_id=from_checkpoint_id,
+        disk_ids=disk_ids,
+        description=description,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_backup_finalize",
+    description=(
+        "Finalize a VM backup session after data transfer completes (releases scratch disks/merges). "
+        "Mutating action: requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_vm_backup_finalize(
+    vm_name_or_id: str,
+    backup_id: str,
+    confirm: bool = False,
+) -> BackupOperationResult:
+    """Finalize a VM backup session."""
+    return finalize_vm_backup_tool(
+        vm_name_or_id=vm_name_or_id,
+        backup_id=backup_id,
+        confirm=confirm,
+    )
 
 
 def main() -> None:

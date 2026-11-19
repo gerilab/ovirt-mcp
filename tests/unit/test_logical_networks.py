@@ -8,12 +8,14 @@ from pydantic import SecretStr
 from ovirt_mcp.client.exceptions import OvirtValidationError
 from ovirt_mcp.config import OvirtConfig
 from ovirt_mcp.models.logical_network import (
+    LogicalNetworkDetail,
     LogicalNetworkResult,
     LogicalNetworkSummary,
 )
 from ovirt_mcp.tools.logical_networks import (
     create_logical_network_tool,
     delete_logical_network_tool,
+    get_logical_network_tool,
     list_logical_networks_tool,
 )
 
@@ -140,3 +142,53 @@ def test_delete_logical_network_safe_mode_guard() -> None:
         ),
     ):
         delete_logical_network_tool("VLAN_Storage", confirm=False)
+
+
+def test_get_logical_network_success() -> None:
+    """Test get_logical_network_tool retrieves complete network details."""
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_sys = MagicMock()
+    mock_nets_svc = MagicMock()
+    mock_net_svc = MagicMock()
+    mock_dcs_svc = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_conn.system_service.return_value = mock_sys
+    mock_sys.networks_service.return_value = mock_nets_svc
+    mock_sys.data_centers_service.return_value = mock_dcs_svc
+    mock_nets_svc.network_service.return_value = mock_net_svc
+
+    mock_net = MagicMock()
+    mock_net.id = "net-100"
+    mock_net.name = "vlan-prod"
+    mock_net.description = "Production VLAN"
+    mock_net.data_center.id = "dc-1"
+    mock_net.data_center.name = "ProdDC"
+    mock_net.vlan.id = 100
+    mock_net.mtu = 9000
+    mock_net.status.value = "operational"
+    mock_net.stp = True
+    mock_net.port_isolation = False
+    mock_net.usages = [MagicMock(value="vm")]
+
+    mock_client.find_resource_by_id_or_name.return_value = mock_net
+
+    mock_profile = MagicMock()
+    mock_profile.name = "vlan-prod-profile"
+    mock_net_svc.vnic_profiles_service().list.return_value = [mock_profile]
+    mock_net_svc.network_labels_service().list.return_value = []
+    mock_net_svc.permissions_service().list.return_value = [MagicMock()]
+
+    with patch("ovirt_mcp.tools.logical_networks.get_client", return_value=mock_client):
+        detail = get_logical_network_tool("vlan-prod")
+
+    assert isinstance(detail, LogicalNetworkDetail)
+    assert detail.id == "net-100"
+    assert detail.name == "vlan-prod"
+    assert detail.vlan_id == 100
+    assert detail.mtu == 9000
+    assert detail.stp is True
+    assert detail.usages == ["vm"]
+    assert detail.vnic_profiles == ["vlan-prod-profile"]
+    assert detail.permissions_count == 1
