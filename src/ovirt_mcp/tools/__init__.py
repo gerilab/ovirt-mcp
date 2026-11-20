@@ -12,6 +12,7 @@ from .backups import (
 from .clusters import get_cluster_tool, list_clusters_tool
 from .compute import get_vm_console_file_tool
 from .events import list_system_events_tool, list_vm_events_tool
+from .jobs import get_job_tool, list_jobs_tool
 from .users import (
     add_permission_tool,
     add_role_tool,
@@ -49,6 +50,7 @@ __all__ = [
     "export_vm_tool",
     "finalize_vm_backup_tool",
     "get_cluster_tool",
+    "get_job_tool",
     "get_user_tool",
     "get_vm_backup_tool",
     "get_vm_checkpoint_tool",
@@ -57,6 +59,7 @@ __all__ = [
     "get_vm_tool",
     "import_vm_tool",
     "list_clusters_tool",
+    "list_jobs_tool",
     "list_permissions_tool",
     "list_roles_tool",
     "list_system_events_tool",

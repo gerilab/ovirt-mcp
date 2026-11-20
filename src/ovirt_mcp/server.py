@@ -63,6 +63,10 @@ from ovirt_mcp.models.host_network import (
     HostNetworkAttachmentInfo,
     HostNetworkSetupResult,
 )
+from ovirt_mcp.models.job import (
+    JobDetail,
+    JobSummary,
+)
 from ovirt_mcp.models.logical_network import (
     LogicalNetworkDetail,
     LogicalNetworkResult,
@@ -231,6 +235,7 @@ from ovirt_mcp.tools.hosts_network import (
 from ovirt_mcp.tools.hosts_network import (
     ovirt_host_network_sync as sync_host_network_tool,
 )
+from ovirt_mcp.tools.jobs import get_job_tool, list_jobs_tool
 from ovirt_mcp.tools.logical_networks import (
     create_logical_network_tool,
     delete_logical_network_tool,
@@ -2909,6 +2914,34 @@ def ovirt_vm_backup_finalize(
         backup_id=backup_id,
         confirm=confirm,
     )
+
+
+@mcp.tool(
+    name="ovirt_job_list",
+    description=(
+        "List asynchronous engine jobs (tasks, operations, migrations, disk operations) "
+        "with execution status, timestamps, and initiator."
+    ),
+)
+def ovirt_job_list(
+    status: str | None = None,
+    max_jobs: int = 50,
+) -> list[JobSummary]:
+    """List asynchronous engine jobs."""
+    return list_jobs_tool(status=status, max_jobs=max_jobs)
+
+
+@mcp.tool(
+    name="ovirt_job_get",
+    description=(
+        "Get detailed information and step-by-step execution progress for a specific asynchronous engine job."
+    ),
+)
+def ovirt_job_get(
+    job_id: str,
+) -> JobDetail:
+    """Get detailed asynchronous engine job information and progress steps."""
+    return get_job_tool(job_id=job_id)
 
 
 def main() -> None:

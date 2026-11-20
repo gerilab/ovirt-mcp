@@ -59,6 +59,11 @@ from .host_network import (
     HostNetworkAttachmentInfo,
     HostNetworkSetupResult,
 )
+from .job import (
+    JobDetail,
+    JobStepInfo,
+    JobSummary,
+)
 from .logical_network import (
     LogicalNetworkDetail,
     LogicalNetworkResult,
@@ -169,6 +174,9 @@ __all__ = [
     "HostUpgradeCheckResult",
     "HostUpgradeResult",
     "IsoFileInfo",
+    "JobDetail",
+    "JobStepInfo",
+    "JobSummary",
     "LogicalNetworkDetail",
     "LogicalNetworkResult",
     "LogicalNetworkSummary",
