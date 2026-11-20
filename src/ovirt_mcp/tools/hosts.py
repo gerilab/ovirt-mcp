@@ -189,6 +189,90 @@ def list_hosts_tool(
     return results
 
 
+def get_host_stats_tool(name_or_id: str) -> HostStats:
+    """Retrieve real-time performance metrics and telemetry statistics for a hypervisor host.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+
+    Returns:
+        HostStats model with CPU, memory, swap, and system telemetry.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    system_service = conn.system_service()
+    hosts_service = system_service.hosts_service()
+
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    h_id = str(host.id)
+    h_name = str(host.name)
+    status_val = getattr(getattr(host, "status", None), "value", "unknown")
+
+    active_count, _ = _get_active_vms_on_host(system_service, h_name, h_id)
+
+    host_service = hosts_service.host_service(h_id)
+    try:
+        raw_stats = host_service.statistics_service().list()
+    except Exception as exc:
+        raise OvirtMCPError(
+            f"Failed to retrieve statistics for host '{h_name}': {exc}",
+            details={"host_id": h_id, "error": str(exc)},
+        ) from exc
+
+    stats_map: dict[str, float] = {}
+    for s in raw_stats:
+        s_name = str(getattr(s, "name", ""))
+        vals = getattr(s, "values", None) or []
+        if vals:
+            val_datum = getattr(vals[0], "datum", 0.0)
+            stats_map[s_name] = float(val_datum)
+
+    cpu_user = round(stats_map.get("cpu.current.user", 0.0), 2)
+    cpu_sys = round(stats_map.get("cpu.current.system", 0.0), 2)
+    cpu_idle = round(stats_map.get("cpu.current.idle", 100.0), 2)
+    cpu_usage = round(100.0 - cpu_idle, 2)
+    cpu_load_5m = round(stats_map.get("cpu.load.avg.5m", 0.0), 2)
+
+    mem_total_bytes = stats_map.get("memory.total", 0.0)
+    mem_used_bytes = stats_map.get("memory.used", 0.0)
+    mem_free_bytes = stats_map.get("memory.free", 0.0)
+    mem_total_gb = round(mem_total_bytes / (1024**3), 2)
+    mem_used_gb = round(mem_used_bytes / (1024**3), 2)
+    mem_free_gb = round(mem_free_bytes / (1024**3), 2)
+    mem_used_pct = (
+        round((mem_used_bytes / mem_total_bytes * 100.0), 2) if mem_total_bytes > 0 else 0.0
+    )
+
+    swap_total_mb = round(stats_map.get("swap.total", 0.0) / (1024**2), 2)
+    swap_used_mb = round(stats_map.get("swap.used", 0.0) / (1024**2), 2)
+
+    boot_timestamp = stats_map.get("boot.time")
+    boot_time_str = (
+        time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(boot_timestamp))
+        if boot_timestamp and boot_timestamp > 0
+        else None
+    )
+
+    return HostStats(
+        host_id=h_id,
+        host_name=h_name,
+        status=status_val,
+        active_vms_count=active_count,
+        cpu_usage_percent=cpu_usage,
+        cpu_user_percent=cpu_user,
+        cpu_system_percent=cpu_sys,
+        cpu_idle_percent=cpu_idle,
+        cpu_load_avg_5m=cpu_load_5m,
+        memory_total_gb=mem_total_gb,
+        memory_used_gb=mem_used_gb,
+        memory_free_gb=mem_free_gb,
+        memory_used_percent=mem_used_pct,
+        swap_total_mb=swap_total_mb,
+        swap_used_mb=swap_used_mb,
+        boot_time=boot_time_str,
+    )
+
+
 def get_host_tool(name_or_id: str) -> HostDetail:
     """Retrieve full configuration and hardware state of a hypervisor host.
 
@@ -302,6 +386,12 @@ def get_host_tool(name_or_id: str) -> HostDetail:
     except Exception:
         numa_count = 0
 
+    host_stats: HostStats | None = None
+    try:
+        host_stats = get_host_stats_tool(h_name)
+    except Exception as exc:
+        logger.debug("Could not fetch real-time stats for host '%s': %s", h_name, exc)
+
     return HostDetail(
         id=h_id,
         name=h_name,
@@ -329,90 +419,7 @@ def get_host_tool(name_or_id: str) -> HostDetail:
             if getattr(host, "update_available", None) is not None
             else None
         ),
-    )
-
-
-def get_host_stats_tool(name_or_id: str) -> HostStats:
-    """Retrieve real-time performance metrics and telemetry statistics for a hypervisor host.
-
-    Args:
-        name_or_id: Display name or UUID of the hypervisor host.
-
-    Returns:
-        HostStats model with CPU, memory, swap, and system telemetry.
-    """
-    client = get_client()
-    conn = client.get_connection()
-    system_service = conn.system_service()
-    hosts_service = system_service.hosts_service()
-
-    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
-    h_id = str(host.id)
-    h_name = str(host.name)
-    status_val = getattr(getattr(host, "status", None), "value", "unknown")
-
-    active_count, _ = _get_active_vms_on_host(system_service, h_name, h_id)
-
-    host_service = hosts_service.host_service(h_id)
-    try:
-        raw_stats = host_service.statistics_service().list()
-    except Exception as exc:
-        raise OvirtMCPError(
-            f"Failed to retrieve statistics for host '{h_name}': {exc}",
-            details={"host_id": h_id, "error": str(exc)},
-        ) from exc
-
-    stats_map: dict[str, float] = {}
-    for s in raw_stats:
-        s_name = str(getattr(s, "name", ""))
-        vals = getattr(s, "values", None) or []
-        if vals:
-            val_datum = getattr(vals[0], "datum", 0.0)
-            stats_map[s_name] = float(val_datum)
-
-    cpu_user = round(stats_map.get("cpu.current.user", 0.0), 2)
-    cpu_sys = round(stats_map.get("cpu.current.system", 0.0), 2)
-    cpu_idle = round(stats_map.get("cpu.current.idle", 100.0), 2)
-    cpu_usage = round(100.0 - cpu_idle, 2)
-    cpu_load_5m = round(stats_map.get("cpu.load.avg.5m", 0.0), 2)
-
-    mem_total_bytes = stats_map.get("memory.total", 0.0)
-    mem_used_bytes = stats_map.get("memory.used", 0.0)
-    mem_free_bytes = stats_map.get("memory.free", 0.0)
-    mem_total_gb = round(mem_total_bytes / (1024**3), 2)
-    mem_used_gb = round(mem_used_bytes / (1024**3), 2)
-    mem_free_gb = round(mem_free_bytes / (1024**3), 2)
-    mem_used_pct = (
-        round((mem_used_bytes / mem_total_bytes * 100.0), 2) if mem_total_bytes > 0 else 0.0
-    )
-
-    swap_total_mb = round(stats_map.get("swap.total", 0.0) / (1024**2), 2)
-    swap_used_mb = round(stats_map.get("swap.used", 0.0) / (1024**2), 2)
-
-    boot_timestamp = stats_map.get("boot.time")
-    boot_time_str = (
-        time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(boot_timestamp))
-        if boot_timestamp and boot_timestamp > 0
-        else None
-    )
-
-    return HostStats(
-        host_id=h_id,
-        host_name=h_name,
-        status=status_val,
-        active_vms_count=active_count,
-        cpu_usage_percent=cpu_usage,
-        cpu_user_percent=cpu_user,
-        cpu_system_percent=cpu_sys,
-        cpu_idle_percent=cpu_idle,
-        cpu_load_avg_5m=cpu_load_5m,
-        memory_total_gb=mem_total_gb,
-        memory_used_gb=mem_used_gb,
-        memory_free_gb=mem_free_gb,
-        memory_used_percent=mem_used_pct,
-        swap_total_mb=swap_total_mb,
-        swap_used_mb=swap_used_mb,
-        boot_time=boot_time_str,
+        stats=host_stats,
     )
 
 

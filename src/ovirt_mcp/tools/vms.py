@@ -26,12 +26,15 @@ from ovirt_mcp.models.vm import (
     VmMigrateResult,
     VmMigrationOptions,
     VmNicInfo,
+    VmNicIoStats,
     VmPinResult,
     VmPlacementAndAffinity,
+    VmRuntimeTelemetry,
     VmSnapshotInfo,
     VmSnapshotResult,
     VmSummary,
 )
+from ovirt_mcp.tools.disks import extract_disk_io_stats
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
@@ -228,6 +231,107 @@ def list_vms_tool(
         )
         for vm in sdk_vms
     ]
+
+
+def extract_nic_io_stats(nic_service: Any) -> VmNicIoStats | None:
+    """Extract real-time VmNicIoStats from a nic_service statistics subcollection."""
+    try:
+        if not hasattr(nic_service, "statistics_service"):
+            return None
+        raw_stats = nic_service.statistics_service().list()
+        if not raw_stats:
+            return None
+        stats_map: dict[str, float] = {}
+        for s in raw_stats:
+            s_name = str(getattr(s, "name", ""))
+            vals = getattr(s, "values", None) or []
+            if vals:
+                stats_map[s_name] = float(getattr(vals[0], "datum", 0.0))
+
+        rx_b = stats_map.get("data.current.rx", 0.0)
+        tx_b = stats_map.get("data.current.tx", 0.0)
+        rx_mb = round(rx_b / (1024**2), 3)
+        tx_mb = round(tx_b / (1024**2), 3)
+        rx_bps = stats_map.get("data.current.rx.bps", 0.0)
+        tx_bps = stats_map.get("data.current.tx.bps", 0.0)
+        rx_err = int(stats_map.get("errors.total.rx", 0.0))
+        tx_err = int(stats_map.get("errors.total.tx", 0.0))
+        tot_rx = int(stats_map.get("data.total.rx", 0.0))
+        tot_tx = int(stats_map.get("data.total.tx", 0.0))
+
+        return VmNicIoStats(
+            rx_bytes_sec=round(rx_b, 1),
+            tx_bytes_sec=round(tx_b, 1),
+            rx_mb_sec=rx_mb,
+            tx_mb_sec=tx_mb,
+            rx_bps=round(rx_bps, 1),
+            tx_bps=round(tx_bps, 1),
+            rx_errors=rx_err,
+            tx_errors=tx_err,
+            total_rx_bytes=tot_rx,
+            total_tx_bytes=tot_tx,
+        )
+    except Exception as exc:
+        logger.debug("Could not extract nic io stats: %s", exc)
+        return None
+
+
+def extract_vm_runtime_telemetry(
+    vm_service: Any,
+    disks: list[VmDiskInfo],
+    nics: list[VmNicInfo],
+) -> VmRuntimeTelemetry | None:
+    """Extract real-time CPU, RAM, and aggregated disk/nic telemetry for a VM."""
+    try:
+        if not hasattr(vm_service, "statistics_service"):
+            return None
+        raw_stats = vm_service.statistics_service().list()
+        stats_map: dict[str, float] = {}
+        for s in raw_stats:
+            s_name = str(getattr(s, "name", ""))
+            vals = getattr(s, "values", None) or []
+            if vals:
+                stats_map[s_name] = float(getattr(vals[0], "datum", 0.0))
+
+        cpu_guest = round(stats_map.get("cpu.current.guest", 0.0), 2)
+        cpu_hyp = round(stats_map.get("cpu.current.hypervisor", 0.0), 2)
+        cpu_total = round(stats_map.get("cpu.current.total", cpu_guest + cpu_hyp), 2)
+
+        mem_inst = int(stats_map.get("memory.installed", 0.0))
+        mem_used = int(stats_map.get("memory.used", 0.0))
+        mem_free = int(stats_map.get("memory.free", 0.0))
+        mem_buf = int(stats_map.get("memory.buffered", 0.0))
+        mem_cached = int(stats_map.get("memory.cached", 0.0))
+        mem_pct = round((mem_used / mem_inst) * 100.0, 1) if mem_inst > 0 and mem_used > 0 else 0.0
+
+        tot_read_mb = sum(d.io_stats.read_mb_sec for d in disks if d.io_stats is not None)
+        tot_write_mb = sum(d.io_stats.write_mb_sec for d in disks if d.io_stats is not None)
+        tot_read_iops = sum(d.io_stats.read_iops for d in disks if d.io_stats is not None)
+        tot_write_iops = sum(d.io_stats.write_iops for d in disks if d.io_stats is not None)
+
+        tot_rx_mb = sum(n.io_stats.rx_mb_sec for n in nics if n.io_stats is not None)
+        tot_tx_mb = sum(n.io_stats.tx_mb_sec for n in nics if n.io_stats is not None)
+
+        return VmRuntimeTelemetry(
+            cpu_usage_percent=cpu_total,
+            cpu_guest_percent=cpu_guest,
+            cpu_hypervisor_percent=cpu_hyp,
+            memory_installed_bytes=mem_inst,
+            memory_used_bytes=mem_used,
+            memory_free_bytes=mem_free,
+            memory_buffered_bytes=mem_buf,
+            memory_cached_bytes=mem_cached,
+            memory_used_percent=mem_pct,
+            total_read_mb_sec=round(tot_read_mb, 3),
+            total_write_mb_sec=round(tot_write_mb, 3),
+            total_read_iops=round(tot_read_iops, 1),
+            total_write_iops=round(tot_write_iops, 1),
+            total_rx_mb_sec=round(tot_rx_mb, 3),
+            total_tx_mb_sec=round(tot_tx_mb, 3),
+        )
+    except Exception as exc:
+        logger.debug("Could not extract VM runtime telemetry: %s", exc)
+        return None
 
 
 def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCompactDetail:
@@ -694,10 +798,13 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
                 disk_sparse = getattr(full_disk, "sparse", None)
 
                 # Storage domain
+                storage_domain_id = None
                 if full_disk is not None:
                     sds = getattr(full_disk, "storage_domains", None)
                     if sds and len(sds) > 0:
                         raw_id = str(getattr(sds[0], "id", "") or "")
+                        if raw_id:
+                            storage_domain_id = raw_id
                         raw_name = getattr(sds[0], "name", None)
                         if raw_name and str(raw_name) != "None":
                             storage_domain_name = str(raw_name)
@@ -709,11 +816,20 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
                         storage_domain_name = str(
                             getattr(full_disk.storage_domain, "name", None) or ""
                         )
+                        storage_domain_id = (
+                            str(getattr(full_disk.storage_domain, "id", None) or "") or None
+                        )
 
             interface_obj = getattr(att, "interface", "virtio_scsi")
             interface_str = getattr(interface_obj, "value", str(interface_obj))
             bootable = bool(getattr(att, "bootable", False))
             read_only = bool(getattr(att, "read_only", False))
+
+            disk_io = None
+            try:
+                disk_io = extract_disk_io_stats(disks_service.disk_service(disk_id))
+            except Exception as io_err:
+                logger.debug("Failed to fetch I/O stats for disk %s: %s", disk_id, io_err)
 
             disks.append(
                 VmDiskInfo(
@@ -727,6 +843,8 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
                     bootable=bootable,
                     read_only=read_only,
                     storage_domain_name=storage_domain_name,
+                    storage_domain_id=storage_domain_id,
+                    io_stats=disk_io,
                 )
             )
     except Exception as exc:
@@ -761,6 +879,12 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
                             if addr and addr not in nic_ips:
                                 nic_ips.append(str(addr))
 
+            nic_io = None
+            try:
+                nic_io = extract_nic_io_stats(vm_service.nics_service().nic_service(nic_id))
+            except Exception as io_err:
+                logger.debug("Failed to fetch I/O stats for nic %s: %s", nic_id, io_err)
+
             nics.append(
                 VmNicInfo(
                     id=nic_id,
@@ -770,6 +894,7 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
                     interface=iface_str,
                     linked=linked,
                     ip_addresses=nic_ips,
+                    io_stats=nic_io,
                 )
             )
     except Exception as exc:
@@ -787,6 +912,13 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
     status_obj = getattr(vm, "status", None)
     status_str = getattr(status_obj, "value", str(status_obj or "unknown")).lower()
     status_detail = getattr(vm, "status_detail", None)
+
+    # 14. Real-time runtime telemetry
+    runtime_telemetry = None
+    try:
+        runtime_telemetry = extract_vm_runtime_telemetry(vm_service, disks, nics)
+    except Exception as telem_err:
+        logger.debug("Failed to extract runtime telemetry for VM '%s': %s", name_or_id, telem_err)
 
     return VmDetail(
         id=str(vm.id),
@@ -809,6 +941,7 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
         disks=disks,
         nics=nics,
         snapshots_count=snapshots_count,
+        telemetry=runtime_telemetry,
     )
 
 

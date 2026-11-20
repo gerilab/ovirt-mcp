@@ -22,6 +22,7 @@ def test_extract_vm_event() -> None:
     mock_event.severity.value = "error"
     mock_event.time = "2026-11-18T10:00:00Z"
     mock_event.description = "VM failed to power on due to missing storage domain"
+    mock_event.vm.id = "vm-uuid-4321"
     mock_event.user_name = "admin@internal"
     mock_event.correlation_id = "flow-999"
 
@@ -32,6 +33,7 @@ def test_extract_vm_event() -> None:
     assert event_model.severity == "error"
     assert event_model.time == "2026-11-18T10:00:00Z"
     assert "missing storage domain" in event_model.description
+    assert event_model.vm_id == "vm-uuid-4321"
     assert event_model.user_name == "admin@internal"
     assert event_model.correlation_id == "flow-999"
 
@@ -72,9 +74,13 @@ def test_extract_system_event() -> None:
     mock_event.severity.value = "alert"
     mock_event.time = "2026-11-19T10:00:00Z"
     mock_event.description = "Low disk space on storage domain Data01"
+    mock_event.vm.id = "vm-uuid-111"
     mock_event.vm.name = "testvm001"
+    mock_event.host.id = "host-uuid-222"
     mock_event.host.name = "olvmhost001"
+    mock_event.cluster.id = "cluster-uuid-333"
     mock_event.cluster.name = "DefaultCluster"
+    mock_event.storage_domain.id = "sd-uuid-444"
     mock_event.storage_domain.name = "Data01"
     mock_event.user_name = "admin@internal"
     mock_event.correlation_id = "corr-1234"
@@ -87,9 +93,13 @@ def test_extract_system_event() -> None:
     assert event_model.severity == "alert"
     assert event_model.time == "2026-11-19T10:00:00Z"
     assert "Low disk space" in event_model.description
+    assert event_model.vm_id == "vm-uuid-111"
     assert event_model.vm_name == "testvm001"
+    assert event_model.host_id == "host-uuid-222"
     assert event_model.host_name == "olvmhost001"
+    assert event_model.cluster_id == "cluster-uuid-333"
     assert event_model.cluster_name == "DefaultCluster"
+    assert event_model.storage_domain_id == "sd-uuid-444"
     assert event_model.storage_domain_name == "Data01"
     assert event_model.user_name == "admin@internal"
     assert event_model.correlation_id == "corr-1234"

@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from ovirt_mcp.models.disk import DiskIoStats
+
 
 class VmSummary(BaseModel):
     """Concise inventory summary of an oVirt / OLVM Virtual Machine."""
@@ -234,6 +236,41 @@ class VmDiskInfo(BaseModel):
     bootable: bool = Field(default=False, description="Whether this is a bootable disk")
     read_only: bool = Field(default=False, description="Whether the disk is mounted read-only")
     storage_domain_name: str | None = Field(default=None, description="Target storage domain name")
+    storage_domain_id: str | None = Field(default=None, description="Target storage domain UUID")
+    io_stats: DiskIoStats | None = Field(
+        default=None, description="Real-time disk I/O performance and latency telemetry"
+    )
+
+
+class VmNicIoStats(BaseModel):
+    """Real-time network throughput and packet health telemetry for a VM network interface."""
+
+    rx_bytes_sec: float = Field(
+        default=0.0, description="Current receive bandwidth in bytes per second (Rx B/s)"
+    )
+    tx_bytes_sec: float = Field(
+        default=0.0, description="Current transmit bandwidth in bytes per second (Tx B/s)"
+    )
+    rx_mb_sec: float = Field(
+        default=0.0, description="Current receive bandwidth in megabytes per second (Rx MB/s)"
+    )
+    tx_mb_sec: float = Field(
+        default=0.0, description="Current transmit bandwidth in megabytes per second (Tx MB/s)"
+    )
+    rx_bps: float = Field(
+        default=0.0, description="Current receive bandwidth in bits per second (Rx bps)"
+    )
+    tx_bps: float = Field(
+        default=0.0, description="Current transmit bandwidth in bits per second (Tx bps)"
+    )
+    rx_errors: int = Field(default=0, description="Total packet receive errors or dropped packets")
+    tx_errors: int = Field(default=0, description="Total packet transmit errors or dropped packets")
+    total_rx_bytes: int = Field(
+        default=0, description="Cumulative lifetime bytes received by interface"
+    )
+    total_tx_bytes: int = Field(
+        default=0, description="Cumulative lifetime bytes transmitted by interface"
+    )
 
 
 class VmNicInfo(BaseModel):
@@ -246,6 +283,53 @@ class VmNicInfo(BaseModel):
     interface: str | None = Field(default=None, description="Driver interface (e.g. virtio, e1000)")
     linked: bool = Field(default=True, description="Whether network cable/link is connected")
     ip_addresses: list[str] = Field(default_factory=list, description="Associated IP addresses")
+    io_stats: VmNicIoStats | None = Field(
+        default=None, description="Real-time network traffic and packet health telemetry"
+    )
+
+
+class VmRuntimeTelemetry(BaseModel):
+    """Real-time operational telemetry, CPU/RAM utilization, and aggregate I/O for a virtual machine."""
+
+    cpu_usage_percent: float = Field(
+        default=0.0, description="Total CPU utilization percentage (0-100%)"
+    )
+    cpu_guest_percent: float = Field(
+        default=0.0, description="Guest user space CPU utilization percentage"
+    )
+    cpu_hypervisor_percent: float = Field(
+        default=0.0, description="Hypervisor overhead CPU utilization percentage"
+    )
+    memory_installed_bytes: int = Field(default=0, description="Total installed RAM in bytes")
+    memory_used_bytes: int = Field(
+        default=0, description="Used RAM in bytes reported by guest agent"
+    )
+    memory_free_bytes: int = Field(
+        default=0, description="Free RAM in bytes reported by guest agent"
+    )
+    memory_buffered_bytes: int = Field(default=0, description="Buffered RAM in bytes")
+    memory_cached_bytes: int = Field(default=0, description="Cached RAM in bytes")
+    memory_used_percent: float = Field(
+        default=0.0, description="Memory utilization percentage (0-100%)"
+    )
+    total_read_mb_sec: float = Field(
+        default=0.0, description="Aggregate disk read throughput in MB/s across all disks"
+    )
+    total_write_mb_sec: float = Field(
+        default=0.0, description="Aggregate disk write throughput in MB/s across all disks"
+    )
+    total_read_iops: float = Field(
+        default=0.0, description="Aggregate disk read operations per second across all disks"
+    )
+    total_write_iops: float = Field(
+        default=0.0, description="Aggregate disk write operations per second across all disks"
+    )
+    total_rx_mb_sec: float = Field(
+        default=0.0, description="Aggregate network receive throughput in MB/s across all NICs"
+    )
+    total_tx_mb_sec: float = Field(
+        default=0.0, description="Aggregate network transmit throughput in MB/s across all NICs"
+    )
 
 
 class VmCompactDetail(BaseModel):
@@ -316,6 +400,10 @@ class VmDetail(BaseModel):
     disks: list[VmDiskInfo] = Field(default_factory=list, description="Attached virtual disks")
     nics: list[VmNicInfo] = Field(default_factory=list, description="Attached network interfaces")
     snapshots_count: int = Field(default=0, description="Number of existing snapshots")
+    telemetry: VmRuntimeTelemetry | None = Field(
+        default=None,
+        description="Real-time operational telemetry, CPU/RAM utilization, and aggregate I/O",
+    )
 
 
 class VmLifecycleResult(BaseModel):

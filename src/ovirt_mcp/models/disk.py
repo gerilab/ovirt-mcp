@@ -3,6 +3,34 @@
 from pydantic import BaseModel, Field
 
 
+class DiskIoStats(BaseModel):
+    """Real-time I/O performance and latency telemetry for a virtual disk."""
+
+    read_bytes_sec: float = Field(
+        default=0.0, description="Current read throughput in bytes per second"
+    )
+    write_bytes_sec: float = Field(
+        default=0.0, description="Current write throughput in bytes per second"
+    )
+    read_mb_sec: float = Field(
+        default=0.0, description="Current read throughput in megabytes per second (MB/s)"
+    )
+    write_mb_sec: float = Field(
+        default=0.0, description="Current write throughput in megabytes per second (MB/s)"
+    )
+    read_iops: float = Field(
+        default=0.0, description="Current read operations per second (Read IOPS)"
+    )
+    write_iops: float = Field(
+        default=0.0, description="Current write operations per second (Write IOPS)"
+    )
+    read_latency_ms: float = Field(default=0.0, description="Read latency in milliseconds (ms)")
+    write_latency_ms: float = Field(default=0.0, description="Write latency in milliseconds (ms)")
+    flush_latency_ms: float = Field(
+        default=0.0, description="Disk flush latency in milliseconds (ms)"
+    )
+
+
 class VmDiskAttachmentInfo(BaseModel):
     """Details about a disk attached to a virtual machine."""
 
@@ -24,6 +52,9 @@ class VmDiskAttachmentInfo(BaseModel):
         default=None, description="Storage domain where disk image resides"
     )
     status: str = Field(default="ok", description="Disk status ('ok', 'locked', etc.)")
+    io_stats: DiskIoStats | None = Field(
+        default=None, description="Real-time disk I/O performance telemetry"
+    )
 
 
 class VmDiskAttachmentResult(BaseModel):
@@ -76,6 +107,9 @@ class DiskDetail(BaseModel):
     )
     storage_domain_id: str | None = Field(
         default=None, description="UUID of the hosting storage domain"
+    )
+    io_stats: DiskIoStats | None = Field(
+        default=None, description="Real-time disk I/O performance and latency telemetry"
     )
 
 

@@ -23,6 +23,14 @@ class StorageDomainSummary(BaseModel):
     committed_gb: float = Field(description="Committed / over-allocated space in gigabytes")
     total_gb: float = Field(description="Total storage capacity in gigabytes")
     usage_percent: float = Field(description="Storage utilization percentage (0-100%)")
+    overcommit_ratio: float = Field(
+        default=0.0,
+        description="Ratio of committed virtual space to total capacity (committed_gb / total_gb)",
+    )
+    space_health: str = Field(
+        default="ok",
+        description="Capacity health status: 'ok', 'warning_low_space', or 'critical_space'",
+    )
     storage_format: str | None = Field(
         default=None, description="Metadata format version (e.g. 'v4', 'v5')"
     )
@@ -35,6 +43,51 @@ class StorageDomainSummary(BaseModel):
         default_factory=list,
         description="Names of Data Centers this storage domain is attached to",
     )
+
+
+class StorageDomainIoStats(BaseModel):
+    """Aggregate real-time I/O performance and latency metrics for a storage domain."""
+
+    total_read_bytes_sec: float = Field(
+        default=0.0, description="Aggregate read throughput in bytes per second"
+    )
+    total_write_bytes_sec: float = Field(
+        default=0.0, description="Aggregate write throughput in bytes per second"
+    )
+    total_read_mb_sec: float = Field(
+        default=0.0, description="Aggregate read throughput in MB/s across stored disks"
+    )
+    total_write_mb_sec: float = Field(
+        default=0.0, description="Aggregate write throughput in MB/s across stored disks"
+    )
+    total_read_iops: float = Field(
+        default=0.0, description="Aggregate read IOPS across all active disks"
+    )
+    total_write_iops: float = Field(
+        default=0.0, description="Aggregate write IOPS across all active disks"
+    )
+    avg_read_latency_ms: float = Field(
+        default=0.0, description="Average read latency across active disks in milliseconds"
+    )
+    avg_write_latency_ms: float = Field(
+        default=0.0, description="Average write latency across active disks in milliseconds"
+    )
+    active_disks_count: int = Field(
+        default=0, description="Number of virtual disks with active I/O telemetry"
+    )
+
+
+class StorageDomainTopDiskIo(BaseModel):
+    """Real-time performance profile of an active virtual disk on a storage domain."""
+
+    disk_id: str = Field(description="UUID of the virtual disk")
+    disk_name: str = Field(description="Name or alias of the virtual disk")
+    read_mb_sec: float = Field(default=0.0, description="Read throughput in MB/s")
+    write_mb_sec: float = Field(default=0.0, description="Write throughput in MB/s")
+    read_iops: float = Field(default=0.0, description="Read operations per second")
+    write_iops: float = Field(default=0.0, description="Write operations per second")
+    read_latency_ms: float = Field(default=0.0, description="Read latency in milliseconds")
+    write_latency_ms: float = Field(default=0.0, description="Write latency in milliseconds")
 
 
 class StorageDomainDetail(StorageDomainSummary):
@@ -59,6 +112,17 @@ class StorageDomainDetail(StorageDomainSummary):
     disks_count: int = Field(default=0, description="Number of virtual disks stored in domain")
     templates_count: int = Field(default=0, description="Number of VM templates stored in domain")
     vms_count: int = Field(default=0, description="Number of VMs with lease or OVF store in domain")
+    io_stats: StorageDomainIoStats | None = Field(
+        default=None, description="Aggregate real-time I/O telemetry across stored disks"
+    )
+    top_io_disks: list[StorageDomainTopDiskIo] = Field(
+        default_factory=list,
+        description="Top active virtual disks ranked by current I/O activity",
+    )
+    vms_list: list[str] = Field(
+        default_factory=list,
+        description="Names of virtual machines hosted on this storage domain",
+    )
 
 
 class StorageDomainResult(BaseModel):

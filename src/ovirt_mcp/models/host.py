@@ -75,6 +75,33 @@ class HostPowerManagement(BaseModel):
     )
 
 
+class HostStats(BaseModel):
+    """Real-time performance and telemetry statistics for a hypervisor host."""
+
+    host_id: str = Field(description="UUID of the hypervisor host")
+    host_name: str = Field(description="Display name of the host")
+    status: str = Field(description="Host operational status")
+    active_vms_count: int = Field(default=0, description="Running virtual machines count")
+    cpu_usage_percent: float = Field(
+        default=0.0, description="Total active CPU utilization percentage (0-100%)"
+    )
+    cpu_user_percent: float = Field(
+        default=0.0, description="CPU user space utilization percentage"
+    )
+    cpu_system_percent: float = Field(
+        default=0.0, description="CPU kernel space utilization percentage"
+    )
+    cpu_idle_percent: float = Field(default=100.0, description="CPU idle percentage")
+    cpu_load_avg_5m: float = Field(default=0.0, description="5-minute system load average")
+    memory_total_gb: float = Field(default=0.0, description="Total physical RAM in GB")
+    memory_used_gb: float = Field(default=0.0, description="Physically consumed RAM in GB")
+    memory_free_gb: float = Field(default=0.0, description="Unallocated RAM in GB")
+    memory_used_percent: float = Field(default=0.0, description="Memory consumption percentage")
+    swap_total_mb: float = Field(default=0.0, description="Total swap space in MB")
+    swap_used_mb: float = Field(default=0.0, description="Active swap consumed in MB")
+    boot_time: str | None = Field(default=None, description="Host system boot timestamp")
+
+
 class HostDetail(BaseModel):
     """Full detailed configuration and state of a hypervisor host."""
 
@@ -110,33 +137,9 @@ class HostDetail(BaseModel):
     update_available: bool | None = Field(
         default=None, description="Whether OS or package updates are available for this host"
     )
-
-
-class HostStats(BaseModel):
-    """Real-time performance and telemetry statistics for a hypervisor host."""
-
-    host_id: str = Field(description="UUID of the hypervisor host")
-    host_name: str = Field(description="Display name of the host")
-    status: str = Field(description="Host operational status")
-    active_vms_count: int = Field(default=0, description="Running virtual machines count")
-    cpu_usage_percent: float = Field(
-        default=0.0, description="Total active CPU utilization percentage (0-100%)"
+    stats: HostStats | None = Field(
+        default=None, description="Real-time performance and telemetry statistics"
     )
-    cpu_user_percent: float = Field(
-        default=0.0, description="CPU user space utilization percentage"
-    )
-    cpu_system_percent: float = Field(
-        default=0.0, description="CPU kernel space utilization percentage"
-    )
-    cpu_idle_percent: float = Field(default=100.0, description="CPU idle percentage")
-    cpu_load_avg_5m: float = Field(default=0.0, description="5-minute system load average")
-    memory_total_gb: float = Field(default=0.0, description="Total physical RAM in GB")
-    memory_used_gb: float = Field(default=0.0, description="Physically consumed RAM in GB")
-    memory_free_gb: float = Field(default=0.0, description="Unallocated RAM in GB")
-    memory_used_percent: float = Field(default=0.0, description="Memory consumption percentage")
-    swap_total_mb: float = Field(default=0.0, description="Total swap space in MB")
-    swap_used_mb: float = Field(default=0.0, description="Active swap consumed in MB")
-    boot_time: str | None = Field(default=None, description="Host system boot timestamp")
 
 
 class HostNicInfo(BaseModel):

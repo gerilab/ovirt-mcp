@@ -1,5 +1,6 @@
 """Storage Domain management tools for oVirt / OLVM."""
 
+import contextlib
 import logging
 from typing import Any
 
@@ -9,9 +10,12 @@ from ovirt_mcp.client import get_client
 from ovirt_mcp.client.exceptions import OvirtValidationError
 from ovirt_mcp.models.storage import (
     StorageDomainDetail,
+    StorageDomainIoStats,
     StorageDomainResult,
     StorageDomainSummary,
+    StorageDomainTopDiskIo,
 )
+from ovirt_mcp.tools.disks import extract_disk_io_stats
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
@@ -71,6 +75,18 @@ def _build_storage_domain_summary(
     if getattr(sd, "storage_format", None):
         format_str = str(sd.storage_format).lower()
 
+    overcommit_ratio = round(comm_gb / total_gb, 2) if total_gb > 0 and comm_gb is not None else 0.0
+
+    warn_ind = getattr(sd, "warning_low_space_indicator", None)
+    crit_block = getattr(sd, "critical_space_action_blocker", None)
+    space_health = "ok"
+    if crit_block is not None and avail_gb <= float(crit_block):
+        space_health = "critical_space"
+    elif (
+        warn_ind is not None and total_gb > 0 and ((avail_gb / total_gb) * 100.0) <= float(warn_ind)
+    ):
+        space_health = "warning_low_space"
+
     return StorageDomainSummary(
         id=sd_id,
         name=str(sd.name),
@@ -82,6 +98,8 @@ def _build_storage_domain_summary(
         committed_gb=comm_gb,
         total_gb=total_gb,
         usage_percent=usage_pct,
+        overcommit_ratio=overcommit_ratio,
+        space_health=space_health,
         storage_format=format_str,
         address=addr_str,
         path=path_str,
@@ -168,12 +186,80 @@ def ovirt_storage_domain_get(name_or_id: str) -> StorageDomainDetail:
 
     summary = _build_storage_domain_summary(sd_detail, dc_map, dc_status_map)
 
-    # Count disks
+    # Count disks and calculate aggregate real-time I/O telemetry
     disks_count = 0
+    top_io_disks: list[StorageDomainTopDiskIo] = []
+    tot_read_bytes = 0.0
+    tot_write_bytes = 0.0
+    tot_read_mb = 0.0
+    tot_write_mb = 0.0
+    tot_read_iops = 0.0
+    tot_write_iops = 0.0
+    read_latencies: list[float] = []
+    write_latencies: list[float] = []
+    active_disks_count = 0
+
     try:
-        disks_count = len(sd_svc.disks_service().list())
+        sd_disks = sd_svc.disks_service().list()
+        disks_count = len(sd_disks)
+        disks_service = sys_svc.disks_service()
+        for d in sd_disks:
+            d_id = str(getattr(d, "id", ""))
+            d_name = str(getattr(d, "name", None) or d_id)
+            d_io = None
+            with contextlib.suppress(Exception):
+                d_io = extract_disk_io_stats(disks_service.disk_service(d_id))
+
+            if d_io:
+                active_disks_count += 1
+                tot_read_bytes += d_io.read_bytes_sec
+                tot_write_bytes += d_io.write_bytes_sec
+                tot_read_mb += d_io.read_mb_sec
+                tot_write_mb += d_io.write_mb_sec
+                tot_read_iops += d_io.read_iops
+                tot_write_iops += d_io.write_iops
+                if d_io.read_latency_ms > 0:
+                    read_latencies.append(d_io.read_latency_ms)
+                if d_io.write_latency_ms > 0:
+                    write_latencies.append(d_io.write_latency_ms)
+
+                top_io_disks.append(
+                    StorageDomainTopDiskIo(
+                        disk_id=d_id,
+                        disk_name=d_name,
+                        read_mb_sec=d_io.read_mb_sec,
+                        write_mb_sec=d_io.write_mb_sec,
+                        read_iops=d_io.read_iops,
+                        write_iops=d_io.write_iops,
+                        read_latency_ms=d_io.read_latency_ms,
+                        write_latency_ms=d_io.write_latency_ms,
+                    )
+                )
+
+        top_io_disks.sort(
+            key=lambda x: (x.read_mb_sec + x.write_mb_sec) * 100 + x.read_iops + x.write_iops,
+            reverse=True,
+        )
+        top_io_disks = top_io_disks[:10]
     except Exception as e:
-        logger.debug("Failed counting disks in storage domain %s: %s", sd.id, e)
+        logger.debug("Failed calculating disk statistics in storage domain %s: %s", sd.id, e)
+
+    avg_read_lat = round(sum(read_latencies) / len(read_latencies), 3) if read_latencies else 0.0
+    avg_write_lat = (
+        round(sum(write_latencies) / len(write_latencies), 3) if write_latencies else 0.0
+    )
+
+    io_stats = StorageDomainIoStats(
+        total_read_bytes_sec=round(tot_read_bytes, 1),
+        total_write_bytes_sec=round(tot_write_bytes, 1),
+        total_read_mb_sec=round(tot_read_mb, 3),
+        total_write_mb_sec=round(tot_write_mb, 3),
+        total_read_iops=round(tot_read_iops, 1),
+        total_write_iops=round(tot_write_iops, 1),
+        avg_read_latency_ms=avg_read_lat,
+        avg_write_latency_ms=avg_write_lat,
+        active_disks_count=active_disks_count,
+    )
 
     # Count templates
     templates_count = 0
@@ -182,10 +268,16 @@ def ovirt_storage_domain_get(name_or_id: str) -> StorageDomainDetail:
     except Exception as e:
         logger.debug("Failed counting templates in storage domain %s: %s", sd.id, e)
 
-    # Count VMs
+    # Count and list VMs
     vms_count = 0
+    vms_list: list[str] = []
     try:
-        vms_count = len(sd_svc.vms_service().list())
+        sd_vms = sd_svc.vms_service().list()
+        vms_count = len(sd_vms)
+        for v in sd_vms:
+            v_name = getattr(v, "name", None)
+            if v_name:
+                vms_list.append(str(v_name))
     except Exception as e:
         logger.debug("Failed counting VMs in storage domain %s: %s", sd.id, e)
 
@@ -205,6 +297,9 @@ def ovirt_storage_domain_get(name_or_id: str) -> StorageDomainDetail:
         disks_count=disks_count,
         templates_count=templates_count,
         vms_count=vms_count,
+        io_stats=io_stats,
+        top_io_disks=top_io_disks,
+        vms_list=vms_list,
     )
 
 

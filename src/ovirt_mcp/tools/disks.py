@@ -11,6 +11,7 @@ from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtValidationError
 from ovirt_mcp.models.disk import (
     DiskCreateResult,
     DiskDetail,
+    DiskIoStats,
     DiskOperationResult,
     DiskResizeResult,
     VmDiskAttachmentInfo,
@@ -23,6 +24,50 @@ from ovirt_mcp.tools.guards import (
 )
 
 logger = logging.getLogger("ovirt_mcp.tools.disks")
+
+
+def extract_disk_io_stats(disk_service: Any) -> DiskIoStats | None:
+    """Extract real-time DiskIoStats from a disk_service statistics subcollection."""
+    try:
+        if not hasattr(disk_service, "statistics_service"):
+            return None
+        raw_stats = disk_service.statistics_service().list()
+        if not raw_stats:
+            return None
+        stats_map: dict[str, float] = {}
+        for s in raw_stats:
+            s_name = str(getattr(s, "name", ""))
+            vals = getattr(s, "values", None) or []
+            if vals:
+                stats_map[s_name] = float(getattr(vals[0], "datum", 0.0))
+
+        read_bytes = stats_map.get("data.current.read", 0.0)
+        write_bytes = stats_map.get("data.current.write", 0.0)
+        read_mb = round(read_bytes / (1024**2), 3)
+        write_mb = round(write_bytes / (1024**2), 3)
+        read_iops = round(stats_map.get("data.current.read_ops", 0.0), 1)
+        write_iops = round(stats_map.get("data.current.write_ops", 0.0), 1)
+        read_lat_s = stats_map.get("disk.read.latency", 0.0)
+        write_lat_s = stats_map.get("disk.write.latency", 0.0)
+        flush_lat_s = stats_map.get("disk.flush.latency", 0.0)
+        read_lat_ms = round(read_lat_s * 1000.0, 3)
+        write_lat_ms = round(write_lat_s * 1000.0, 3)
+        flush_lat_ms = round(flush_lat_s * 1000.0, 3)
+
+        return DiskIoStats(
+            read_bytes_sec=round(read_bytes, 1),
+            write_bytes_sec=round(write_bytes, 1),
+            read_mb_sec=read_mb,
+            write_mb_sec=write_mb,
+            read_iops=read_iops,
+            write_iops=write_iops,
+            read_latency_ms=read_lat_ms,
+            write_latency_ms=write_lat_ms,
+            flush_latency_ms=flush_lat_ms,
+        )
+    except Exception as exc:
+        logger.debug("Could not extract disk io stats: %s", exc)
+        return None
 
 
 def list_vm_disks_tool(name_or_id: str) -> list[VmDiskAttachmentInfo]:
@@ -105,6 +150,12 @@ def list_vm_disks_tool(name_or_id: str) -> list[VmDiskAttachmentInfo]:
             except Exception as disk_err:
                 logger.debug("Failed to fetch detailed disk info for %s: %s", disk_id, disk_err)
 
+            disk_io = None
+            try:
+                disk_io = extract_disk_io_stats(disks_service.disk_service(disk_id))
+            except Exception as io_err:
+                logger.debug("Failed to fetch I/O stats for disk %s: %s", disk_id, io_err)
+
             results.append(
                 VmDiskAttachmentInfo(
                     attachment_id=att_id,
@@ -119,6 +170,7 @@ def list_vm_disks_tool(name_or_id: str) -> list[VmDiskAttachmentInfo]:
                     disk_format=d_format,
                     storage_domain_name=sd_name,
                     status=d_status,
+                    io_stats=disk_io,
                 )
             )
     except Exception as exc:
@@ -780,6 +832,12 @@ def list_disks_tool(
             if target_sd_id and d_sd_id != target_sd_id:
                 continue
 
+            disk_io = None
+            try:
+                disk_io = extract_disk_io_stats(disks_service.disk_service(d_id))
+            except Exception as io_err:
+                logger.debug("Failed to fetch I/O stats for disk %s: %s", d_id, io_err)
+
             disks_list.append(
                 DiskDetail(
                     id=d_id,
@@ -791,6 +849,7 @@ def list_disks_tool(
                     content_type=content_str,
                     storage_domain_name=d_sd_name,
                     storage_domain_id=d_sd_id,
+                    io_stats=disk_io,
                 )
             )
     except Exception as exc:

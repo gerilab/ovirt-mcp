@@ -20,6 +20,10 @@ def extract_vm_event(event: Any) -> VmEvent:
 
     time_str = str(getattr(event, "time", ""))
     description = str(getattr(event, "description", ""))
+
+    vm_obj = getattr(event, "vm", None)
+    vm_id = str(vm_obj.id) if vm_obj and getattr(vm_obj, "id", None) else None
+
     user_name = getattr(event, "user_name", None)
     correlation_id = getattr(event, "correlation_id", None)
 
@@ -29,6 +33,7 @@ def extract_vm_event(event: Any) -> VmEvent:
         severity=severity_str,
         time=time_str,
         description=description,
+        vm_id=vm_id,
         user_name=user_name,
         correlation_id=correlation_id,
     )
@@ -79,15 +84,19 @@ def extract_system_event(event: Any) -> SystemEvent:
     description = str(getattr(event, "description", ""))
 
     vm_obj = getattr(event, "vm", None)
+    vm_id = str(vm_obj.id) if vm_obj and getattr(vm_obj, "id", None) else None
     vm_name = getattr(vm_obj, "name", None) if vm_obj else None
 
     host_obj = getattr(event, "host", None)
+    host_id = str(host_obj.id) if host_obj and getattr(host_obj, "id", None) else None
     host_name = getattr(host_obj, "name", None) if host_obj else None
 
     cluster_obj = getattr(event, "cluster", None)
+    cluster_id = str(cluster_obj.id) if cluster_obj and getattr(cluster_obj, "id", None) else None
     cluster_name = getattr(cluster_obj, "name", None) if cluster_obj else None
 
     sd_obj = getattr(event, "storage_domain", None)
+    sd_id = str(sd_obj.id) if sd_obj and getattr(sd_obj, "id", None) else None
     sd_name = getattr(sd_obj, "name", None) if sd_obj else None
 
     user_name = getattr(event, "user_name", None)
@@ -99,9 +108,13 @@ def extract_system_event(event: Any) -> SystemEvent:
         severity=severity_str,
         time=time_str,
         description=description,
+        vm_id=vm_id,
         vm_name=vm_name,
+        host_id=host_id,
         host_name=host_name,
+        cluster_id=cluster_id,
         cluster_name=cluster_name,
+        storage_domain_id=sd_id,
         storage_domain_name=sd_name,
         user_name=user_name,
         correlation_id=correlation_id,

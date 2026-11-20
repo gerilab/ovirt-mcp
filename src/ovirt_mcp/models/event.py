@@ -13,6 +13,9 @@ class VmEvent(BaseModel):
     )
     time: str = Field(description="Timestamp when the event occurred in ISO format")
     description: str = Field(description="Human-readable event message or audit description")
+    vm_id: str | None = Field(
+        default=None, description="Unique UUID of the virtual machine, if applicable"
+    )
     user_name: str | None = Field(
         default=None, description="Username who initiated or triggered the action, if applicable"
     )
@@ -29,14 +32,24 @@ class SystemEvent(BaseModel):
     severity: str = Field(description="Severity level: 'normal', 'warning', 'error', 'alert'")
     time: str = Field(description="Timestamp when event occurred in ISO format")
     description: str = Field(description="Audit event message or diagnostic detail")
+    vm_id: str | None = Field(
+        default=None, description="Affected virtual machine UUID, if applicable"
+    )
     vm_name: str | None = Field(
         default=None, description="Affected virtual machine name, if applicable"
+    )
+    host_id: str | None = Field(
+        default=None, description="Affected hypervisor host UUID, if applicable"
     )
     host_name: str | None = Field(
         default=None, description="Affected hypervisor host name, if applicable"
     )
+    cluster_id: str | None = Field(default=None, description="Affected cluster UUID, if applicable")
     cluster_name: str | None = Field(
         default=None, description="Affected cluster name, if applicable"
+    )
+    storage_domain_id: str | None = Field(
+        default=None, description="Affected storage domain UUID, if applicable"
     )
     storage_domain_name: str | None = Field(
         default=None, description="Affected storage domain name, if applicable"
