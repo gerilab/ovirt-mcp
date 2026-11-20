@@ -27,18 +27,27 @@ This policy applies to all project artifacts and Git metadata, regardless of the
 
 ---
 
-## 2. Language Separation: Chat vs. Repository
+## 2. Language Separation: Native Chat Freedom vs. English Repository
 
-| Context | Permitted Language | Examples |
+### Golden Rule: Never Force the User to Speak English in Chat
+Developers who clone and use this repository are 100% free to converse with AI agents in whatever natural language they prefer (e.g., Hungarian, German, French, Spanish, Japanese, etc.).
+
+- **In the Chat Interface:** The AI agent MUST converse, explain, reason, and answer in the developer's language of choice. The agent must **NEVER** demand, require, or ask the user to switch to English in the dialogue.
+- **In Repository Files & Git Metadata:** The AI agent acts as a seamless bilingual bridge: it understands instructions in the user's language, but authors/updates code, comments, docstrings, documentation, and Git commits strictly in English.
+
+| Context | Permitted Language | Examples & Rules |
 |---|---|---|
-| **User Chat / Dialogue** | Language preferred by the user (e.g. Hungarian, German, etc.) | User asks questions in Hungarian; Agent explains architecture and answers in Hungarian. |
-| **Git Commits & History** | **English ONLY** | `docs: expand remote linux jumpbox ssh guide for vscode and kiro ide` |
-| **Source Code & Comments** | **English ONLY** | `# Verify disk is not locked before snapshot creation` |
-| **Documentation Files** | **English ONLY** | Headings, guides, code examples, troubleshooting sections. |
-| **GitHub PRs & Issues** | **English ONLY** | PR title, markdown checklist, and technical change summary. |
+| **User Chat / Dialogue** | **User's Choice (Any)** | User asks questions or issues tasks in Hungarian; Agent answers in Hungarian. |
+| **Agent Chat Responses** | **User's Choice (Any)** | Agent explains architecture, reports test results, and guides in the user's language. |
+| **Git Commits & History** | **English ONLY** | Commit subject & body: `docs: expand remote linux jumpbox ssh guide`. |
+| **Source Code & Comments** | **English ONLY** | Variable names, function definitions, docstrings, and comments in English. |
+| **Documentation & Skills** | **English ONLY** | `README.md`, `AGENTS.md`, and `.agents/skills/...` files in English. |
+| **GitHub PRs & Issues** | **English ONLY** | PR titles, descriptions, and issue tickets in English for global collaboration. |
 
 > [!CRITICAL]
-> Even if the user issues requests or writes chat prompts in Hungarian (or any other language), the agent must automatically translate, formulate, and commit all Git messages and file edits **strictly in English**. Never mix languages in commits or documentation.
+> **Summary for AI Agents:**
+> 1. Do NOT force the user to speak English. If the user prompts in Hungarian, respond in Hungarian.
+> 2. Do NOT write non-English text into git commits, code comments, docstrings, or repository markdown files. Translate behind the scenes into English.
 
 ---
 

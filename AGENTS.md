@@ -34,9 +34,9 @@ Key principles:
      6. Run `ruff` check/format and `mypy` typecheck.
      7. Open PR / Merge to `main`.
 
-3. **English-Only Policy for GitHub & Git Submissions (Mandatory):**
-   - **All Git commit messages, PR titles/descriptions, branch names, code comments, docstrings, release notes, and documentation (`README.md`, etc.) MUST be strictly in English.**
-   - While user chat interactions can occur in other languages (such as Hungarian), all repository content and metadata submitted to Git and GitHub must remain 100% English.
+3. **Language Policy: English Repository Artifacts, Native Language Chat Freedom:**
+   - **Repository Artifacts (Strict English Only):** All Git commit messages, PR titles/descriptions, branch names, code comments, docstrings, release notes, documentation (`README.md`, etc.), and agent/skill definition files MUST be strictly in English for global maintainability and collaboration.
+   - **User Chat & Dialogue (Developer's Native Language Freedom):** AI Agents must **NEVER** force the developer to converse in English. Anyone who clones and uses this repository can interact with their AI assistant in their preferred native language (e.g., Hungarian, German, French, Spanish, etc.). The agent must actively respond and converse in the user's chosen language, while transparently ensuring that all code, docstrings, comments, and Git commits it creates are written 100% in English.
    - Follow Conventional Commits format (`feat:`, `fix:`, `docs:`, etc.) in imperative mood. See `.agents/skills/github-english-submissions/SKILL.md`.
 
 ---
