@@ -34,6 +34,11 @@ Key principles:
      6. Run `ruff` check/format and `mypy` typecheck.
      7. Open PR / Merge to `main`.
 
+3. **English-Only Policy for GitHub & Git Submissions (Mandatory):**
+   - **All Git commit messages, PR titles/descriptions, branch names, code comments, docstrings, release notes, and documentation (`README.md`, etc.) MUST be strictly in English.**
+   - While user chat interactions can occur in other languages (such as Hungarian), all repository content and metadata submitted to Git and GitHub must remain 100% English.
+   - Follow Conventional Commits format (`feat:`, `fix:`, `docs:`, etc.) in imperative mood. See `.agents/skills/github-english-submissions/SKILL.md`.
+
 ---
 
 ## 3. Tool Naming Scheme & Namespacing (Mandatory)
