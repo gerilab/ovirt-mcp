@@ -11,7 +11,10 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
 1. [Features](#features)
 2. [Prerequisites & System Packages](#prerequisites--system-packages)
 3. [Step-by-Step Installation Guide](#step-by-step-installation-guide)
-4. [Configuration (`.env`) Reference](#configuration-env-reference)
+4. [Configuration Reference (`.env` & `mcp.json`)](#configuration-reference-env--mcpjson)
+   - [Method A: Using a `.env` File (File-based)](#method-a-using-a-env-file-file-based)
+   - [Method B: Direct `mcp.json` (`env` Block - Zero `.env`)](#method-b-direct-mcpjson-env-block---zero-env)
+   - [Configuration Options Breakdown](#configuration-options-breakdown)
    - [Authentication & AAA Profiles](#authentication--aaa-profiles-crucial)
    - [Three-Tier Access & Safety Architecture](#three-tier-access--safety-architecture)
    - [Service Account Provisioning Best Practices](#service-account-provisioning-best-practices)
@@ -159,9 +162,10 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
 7. [Connecting to AI MCP Clients](#connecting-to-ai-mcp-clients)
    - [Method 1: Docker Desktop for Claude (Zero-Install Setup)](#method-1-docker-desktop-for-claude-zero-install-setup)
    - [Method 2: Classic 24/7 Docker Container (Network SSE Daemon)](#method-2-classic-247-docker-container-network-sse-daemon)
-   - [Method 3: Native Python Virtual Environment](#method-3-native-python-virtual-environment)
-   - [Method 4: Remote Linux IDE (VS Code with Remote - SSH / WSL)](#method-4-remote-linux-ide-vs-code-with-remote---ssh--wsl)
-   - [Method 5: Kiro IDE on Remote Linux](#method-5-kiro-ide-on-remote-linux)
+   - [Method 3: Native Python Virtual Environment (Linux & macOS)](#method-3-native-python-virtual-environment-linux--macos)
+   - [Method 4: Windows Desktop & IDE Setup (Step-by-Step for Windows)](#method-4-windows-desktop--ide-setup-step-by-step-for-windows)
+   - [Method 5: Remote Linux IDE (VS Code with Remote - SSH / WSL)](#method-5-remote-linux-ide-vs-code-with-remote---ssh--wsl)
+   - [Method 6: Kiro IDE on Remote Linux](#method-6-kiro-ide-on-remote-linux)
 8. [Testing & Quality Verification](#testing--quality-verification)
 9. [Troubleshooting & FAQ](#troubleshooting--faq)
 
@@ -244,7 +248,18 @@ pip install -e ".[dev]"
 
 ---
 
-## Configuration (`.env`) Reference
+## Configuration Reference (`.env` & `mcp.json`)
+
+`ovirt-mcp` provides two flexible, production-ready configuration methods to fit different workflows:
+
+1. **[Method A: Using a `.env` File (File-based)](#method-a-using-a-env-file-file-based):** Preferred for background daemons, Docker Compose, automated command-line scripts, or developers who keep their credentials in a standalone file.
+2. **[Method B: Direct `mcp.json` (`env` Block - Zero `.env`)](#method-b-direct-mcpjson-env-block---zero-env):** Preferred for AI IDE extensions (VS Code, Cline, Roo Code, Claude Desktop, Cursor), where all credentials and policies are encapsulated directly inside the MCP client settings without maintaining a `.env` file on disk.
+
+Both methods support the exact same configuration parameters. If both are present, variables passed in the client process environment (Method B) override the `.env` file (Method A).
+
+---
+
+### Method A: Using a `.env` File (File-based)
 
 Create your local `.env` configuration file from the template:
 
@@ -281,6 +296,39 @@ MCP_READ_ONLY=false
 # When true, ovirt_vm_get returns compact summaries by default (~86% fewer tokens)
 MCP_COMPACT_MODE=false
 ```
+
+---
+
+### Method B: Direct `mcp.json` (`env` Block - Zero `.env`)
+
+If you prefer keeping your entire setup inside your AI client configuration without creating or managing a separate `.env` file, populate the `"env"` block directly in your `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "ovirt-mcp",
+      "args": [],
+      "env": {
+        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+        "OVIRT_USERNAME": "mcp-service@internal-authz",
+        "OVIRT_PASSWORD": "YourSecurePasswordHere",
+        "OVIRT_INSECURE": "true",
+        "OVIRT_AUTO_DOWNLOAD_CA": "true",
+        "MCP_COMPACT_MODE": "true",
+        "MCP_SAFE_MODE": "true",
+        "MCP_READ_ONLY": "false",
+        "OVIRT_TIMEOUT": "30",
+        "OVIRT_MAX_RETRIES": "3",
+        "MCP_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
+```
+
+> [!TIP]
+> When using Method B, `ovirt-mcp` does not require a `.env` file to exist on disk. Pydantic Settings automatically reads all configuration parameters from the environment variables injected into the process by your MCP client.
 
 ### Configuration Options Breakdown
 
@@ -3075,22 +3123,175 @@ Configure Claude Desktop or Cursor on any computer on your network:
 
 ---
 
-### Method 3: Native Python Virtual Environment
+### Method 3: Native Python Virtual Environment (Linux & macOS)
 
-If you prefer running directly on your host operating system without Docker:
+If you run directly on a Linux or macOS host operating system:
 
 ```bash
-cd /automation/mcp/ovirt-mcp
+cd /path/to/ovirt-mcp
 source .venv/bin/activate
 ovirt-mcp
 ```
 
-Configure Claude Desktop:
+#### Configure Claude Desktop (macOS / Linux):
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `~/.config/Claude/claude_desktop_config.json` (Linux):
+
 ```json
 {
   "mcpServers": {
     "ovirt": {
-      "command": "/automation/mcp/ovirt-mcp/.venv/bin/ovirt-mcp",
+      "command": "/path/to/ovirt-mcp/.venv/bin/python",
+      "args": ["-m", "ovirt_mcp.server"],
+      "env": {
+        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+        "OVIRT_USERNAME": "mcp-service@internal-authz",
+        "OVIRT_PASSWORD": "YourSecurePasswordHere",
+        "OVIRT_INSECURE": "true",
+        "MCP_COMPACT_MODE": "true",
+        "MCP_SAFE_MODE": "true"
+      }
+    }
+  }
+}
+```
+
+---
+
+### Method 4: Windows Desktop & IDE Setup (Step-by-Step for Windows)
+
+This step-by-step guide is designed for Windows users running VS Code, Claude Desktop, Cline, or Roo Code natively on Windows 10/11.
+
+#### Step 1: Prerequisites
+1. **Python 3.10+:** Download and install from [python.org](https://www.python.org/downloads/).
+   > [!IMPORTANT]
+   > During installation on Windows, **check the box: "Add python.exe to PATH"**!
+2. **Git for Windows:** Download and install from [git-scm.com](https://git-scm.com/).
+
+#### Step 2: Clone and Setup Virtual Environment in PowerShell
+
+Open **PowerShell** or **Windows Terminal** and run:
+
+```powershell
+# 1. Clone the repository into your preferred folder (e.g. C:\Users\<Username>\Projects)
+cd C:\Users\$env:USERNAME
+git clone https://github.com/gerilab/ovirt-mcp.git
+cd ovirt-mcp
+
+# 2. Create Python virtual environment
+python -m venv .venv
+
+# 3. Activate the virtual environment
+.\.venv\Scripts\Activate.ps1
+```
+
+> [!TIP]
+> If PowerShell displays an `ExecutionPolicy` error when activating the venv, run this command once to permit local scripts:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+
+#### Step 3: Install ovirt-mcp
+
+With the virtual environment active (`(.venv)` visible in prompt):
+
+```powershell
+python -m pip install --upgrade pip
+pip install -e .
+```
+
+*(Note for Windows developers: If building the native C extensions fails due to missing C++ compilers, use the pre-built Docker container `ghcr.io/gerilab/ovirt-mcp:latest` or run via WSL2).*
+
+#### Step 4: Windows Path Rules (Crucial!)
+
+In JSON files on Windows:
+* **Option A (Recommended):** Use standard forward slashes (`/`), which both Python and VS Code support on Windows:
+  ```json
+  "command": "C:/Users/YourName/ovirt-mcp/.venv/Scripts/python.exe"
+  ```
+* **Option B:** If using backslashes, escape each one with a double backslash (`\\`):
+  ```json
+  "command": "C:\\Users\\YourName\\ovirt-mcp\\.venv\\Scripts\\python.exe"
+  ```
+
+#### Step 5: Configure AI Clients on Windows
+
+##### For Claude Desktop on Windows:
+Open `%APPDATA%\Claude\claude_desktop_config.json` (accessible via `Win + R` &rarr; `%APPDATA%\Claude`):
+
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "C:/Users/<Username>/ovirt-mcp/.venv/Scripts/python.exe",
+      "args": ["-m", "ovirt_mcp.server"],
+      "env": {
+        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+        "OVIRT_USERNAME": "admin@ovirt@internal",
+        "OVIRT_PASSWORD": "YourSecurePasswordHere",
+        "OVIRT_INSECURE": "true",
+        "MCP_COMPACT_MODE": "true",
+        "MCP_SAFE_MODE": "true",
+        "MCP_READ_ONLY": "false"
+      }
+    }
+  }
+}
+```
+
+##### For VS Code (Cline, Roo Code, Continue) on Windows:
+Create `.vscode/mcp.json` inside your cloned project root using the dynamic `${workspaceFolder}` variable:
+
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["-m", "ovirt_mcp.server"],
+      "env": {
+        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+        "OVIRT_USERNAME": "admin@ovirt@internal",
+        "OVIRT_PASSWORD": "YourSecurePasswordHere",
+        "OVIRT_INSECURE": "true",
+        "MCP_COMPACT_MODE": "true",
+        "MCP_SAFE_MODE": "true",
+        "MCP_READ_ONLY": "false"
+      }
+    }
+  }
+}
+```
+
+---
+
+### Method 5: Remote Linux IDE (VS Code with Remote - SSH / WSL)
+
+This is the standard enterprise setup: your developer workstation runs **VS Code**, connected via **Remote - SSH** (or **WSL**) to a remote Linux development server, jumpbox, or VM where `ovirt-mcp` is checked out and its Python virtualenv is installed.
+
+Inside the remote VS Code session, your AI coding extensions (such as **Cline**, **Roo Code**, **Continue**, or **GitHub Copilot**) run directly on the remote Linux machine.
+
+#### Step 1: Verify the Remote Virtualenv
+
+On the remote Linux server:
+```bash
+cd /path/to/ovirt-mcp
+source .venv/bin/activate
+
+# Verify server boots cleanly in stdio mode:
+python -m ovirt_mcp.server --help
+```
+
+#### Step 2: Configure VS Code Extension
+
+##### Option A: For Cline or Roo Code (Global Extension Settings)
+Edit `cline_mcp_settings.json` (accessible via the Cline MCP Settings tab):
+
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "/path/to/ovirt-mcp/.venv/bin/python",
+      "args": ["-m", "ovirt_mcp.server"],
+      "cwd": "/path/to/ovirt-mcp",
       "env": {
         "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
         "OVIRT_USERNAME": "mcp-service@internal-authz",
@@ -3103,48 +3304,8 @@ Configure Claude Desktop:
 }
 ```
 
----
-
-### Method 4: Remote Linux IDE (VS Code with Remote - SSH / WSL)
-
-This is the most common enterprise setup: your developer workstation runs **VS Code**, connected via **Remote - SSH** (or **WSL**) to a remote Linux development server, jumpbox, or VM where `ovirt-mcp` is checked out and its Python virtualenv is installed.
-
-Inside the remote VS Code session, your AI coding extensions (such as **Cline**, **Roo Code**, **Continue**, or **GitHub Copilot**) run directly on the remote Linux machine.
-
-#### Step 1: Verify the Remote Virtualenv
-
-On the remote Linux server:
-```bash
-cd /automation/mcp/ovirt-mcp
-source .venv/bin/activate
-
-# Verify server boots and recognizes flags in stdio mode:
-python -m ovirt_mcp.server --help
-```
-Ensure your `/automation/mcp/ovirt-mcp/.env` contains your connection credentials and safety policies.
-
-#### Step 2: Configure VS Code Extension
-
-##### Option A: For Cline or Roo Code
-Open the extension's MCP Settings UI, or directly edit `cline_mcp_settings.json` (located in `~/.vscode-server/data/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` on the remote host):
-
-```json
-{
-  "mcpServers": {
-    "ovirt": {
-      "command": "/automation/mcp/ovirt-mcp/.venv/bin/python",
-      "args": ["-m", "ovirt_mcp.server"],
-      "cwd": "/automation/mcp/ovirt-mcp",
-      "env": {
-        "PYTHONPATH": "/automation/mcp/ovirt-mcp/src"
-      }
-    }
-  }
-}
-```
-
 ##### Option B: Workspace-Level Configuration (`.vscode/mcp.json`)
-If your extension supports project-level MCP files, add `.vscode/mcp.json` inside `/automation/mcp/ovirt-mcp`:
+Create `.vscode/mcp.json` inside your project workspace root:
 
 ```json
 {
@@ -3154,7 +3315,11 @@ If your extension supports project-level MCP files, add `.vscode/mcp.json` insid
       "args": ["-m", "ovirt_mcp.server"],
       "cwd": "${workspaceFolder}",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+        "OVIRT_USERNAME": "mcp-service@internal-authz",
+        "OVIRT_PASSWORD": "YourSecurePasswordHere",
+        "OVIRT_INSECURE": "true",
+        "MCP_COMPACT_MODE": "true"
       }
     }
   }
@@ -3162,11 +3327,11 @@ If your extension supports project-level MCP files, add `.vscode/mcp.json` insid
 ```
 
 > [!TIP]
-> Setting `"cwd"` to `/automation/mcp/ovirt-mcp` automatically loads your `.env` configuration file via `python-dotenv`. You do not need to repeat passwords or secrets inside your VS Code settings unless preferred.
+> You can either store credentials in `.env` and specify `"cwd": "${workspaceFolder}"`, or store them directly inside the `"env": { ... }` block of `mcp.json`. Both methods are fully supported.
 
 ---
 
-### Method 5: Kiro IDE on Remote Linux
+### Method 6: Kiro IDE on Remote Linux
 
 **Kiro IDE** is an agentic AI-native IDE. When working in Kiro connected to a remote Linux workspace or running Kiro on a Linux desktop/server:
 
@@ -3178,11 +3343,15 @@ In your workspace root (or in user settings), configure `ovirt-mcp`:
 {
   "mcpServers": {
     "ovirt": {
-      "command": "/automation/mcp/ovirt-mcp/.venv/bin/python",
+      "command": "/path/to/ovirt-mcp/.venv/bin/python",
       "args": ["-m", "ovirt_mcp.server"],
-      "cwd": "/automation/mcp/ovirt-mcp",
+      "cwd": "/path/to/ovirt-mcp",
       "env": {
-        "PYTHONPATH": "/automation/mcp/ovirt-mcp/src"
+        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+        "OVIRT_USERNAME": "mcp-service@internal-authz",
+        "OVIRT_PASSWORD": "YourSecurePasswordHere",
+        "OVIRT_INSECURE": "true",
+        "MCP_COMPACT_MODE": "true"
       },
       "disabled": false,
       "autoApprove": []
@@ -3193,7 +3362,7 @@ In your workspace root (or in user settings), configure `ovirt-mcp`:
 
 #### Step 2: Verification in Kiro
 
-1. Open Kiro on the remote workspace directory `/automation/mcp/ovirt-mcp`.
+1. Open Kiro on your workspace directory.
 2. In Kiro's MCP panel, verify that `ovirt` appears and status is **Connected** with 134 tools available.
 3. In the Kiro chat prompt, run a test query:
    ```text
