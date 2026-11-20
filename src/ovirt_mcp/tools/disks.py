@@ -44,6 +44,16 @@ def list_vm_disks_tool(name_or_id: str) -> list[VmDiskAttachmentInfo]:
     vm_id = str(vm.id)
     vm_service = vms_service.vm_service(vm_id)
 
+    # Pre-fetch storage domain names for human-readable resolution
+    sd_names: dict[str, str] = {}
+    try:
+        sds_service = conn.system_service().storage_domains_service()
+        for sd_item in sds_service.list():
+            if hasattr(sd_item, "id") and hasattr(sd_item, "name") and sd_item.id and sd_item.name:
+                sd_names[str(sd_item.id)] = str(sd_item.name)
+    except Exception as sd_err:
+        logger.debug("Could not pre-fetch storage domain names: %s", sd_err)
+
     results: list[VmDiskAttachmentInfo] = []
     try:
         attachments = vm_service.disk_attachments_service().list()
@@ -80,7 +90,18 @@ def list_vm_disks_tool(name_or_id: str) -> list[VmDiskAttachmentInfo]:
 
                 sds = getattr(full_disk, "storage_domains", [])
                 if sds and len(sds) > 0:
-                    sd_name = getattr(sds[0], "name", None)
+                    raw_sd_id = (
+                        str(getattr(sds[0], "id", ""))
+                        if hasattr(sds[0], "id") and sds[0].id
+                        else None
+                    )
+                    raw_sd_name = getattr(sds[0], "name", None)
+                    if raw_sd_name and str(raw_sd_name) != "None":
+                        sd_name = str(raw_sd_name)
+                    elif raw_sd_id and raw_sd_id in sd_names:
+                        sd_name = sd_names[raw_sd_id]
+                    elif raw_sd_id:
+                        sd_name = raw_sd_id
             except Exception as disk_err:
                 logger.debug("Failed to fetch detailed disk info for %s: %s", disk_id, disk_err)
 
@@ -713,6 +734,16 @@ def list_disks_tool(
             str(getattr(getattr(att, "disk", None), "id", att.id)) for att in attachments
         }
 
+    # Pre-fetch storage domain names for human-readable resolution
+    sd_names: dict[str, str] = {}
+    try:
+        sds_service = conn.system_service().storage_domains_service()
+        for sd_item in sds_service.list():
+            if hasattr(sd_item, "id") and hasattr(sd_item, "name") and sd_item.id and sd_item.name:
+                sd_names[str(sd_item.id)] = str(sd_item.name)
+    except Exception as sd_err:
+        logger.debug("Could not pre-fetch storage domain names: %s", sd_err)
+
     disks_list: list[DiskDetail] = []
     try:
         raw_disks = disks_service.list(search=search)
@@ -737,8 +768,14 @@ def list_disks_tool(
             content_str = str(getattr(content_obj, "value", content_obj or "data")).lower()
 
             sds = getattr(d, "storage_domains", [])
-            d_sd_id = str(sds[0].id) if sds and hasattr(sds[0], "id") else None
-            d_sd_name = str(sds[0].name) if sds and hasattr(sds[0], "name") else None
+            d_sd_id = str(sds[0].id) if sds and hasattr(sds[0], "id") and sds[0].id else None
+            d_sd_name: str | None = None
+            if d_sd_id and d_sd_id in sd_names:
+                d_sd_name = sd_names[d_sd_id]
+            elif sds and hasattr(sds[0], "name") and sds[0].name and str(sds[0].name) != "None":
+                d_sd_name = str(sds[0].name)
+            elif d_sd_id:
+                d_sd_name = d_sd_id
 
             if target_sd_id and d_sd_id != target_sd_id:
                 continue

@@ -642,6 +642,14 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
 
     # 10. Attached Disks
     disks: list[VmDiskInfo] = []
+    sd_names: dict[str, str] = {}
+    try:
+        for sdi in system_service.storage_domains_service().list():
+            if hasattr(sdi, "id") and hasattr(sdi, "name") and sdi.id and sdi.name:
+                sd_names[str(sdi.id)] = str(sdi.name)
+    except Exception:
+        pass
+
     try:
         attachments = vm_service.disk_attachments_service().list()
         disks_service = system_service.disks_service()
@@ -689,9 +697,14 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
                 if full_disk is not None:
                     sds = getattr(full_disk, "storage_domains", None)
                     if sds and len(sds) > 0:
-                        storage_domain_name = str(
-                            getattr(sds[0], "name", None) or getattr(sds[0], "id", "")
-                        )
+                        raw_id = str(getattr(sds[0], "id", "") or "")
+                        raw_name = getattr(sds[0], "name", None)
+                        if raw_name and str(raw_name) != "None":
+                            storage_domain_name = str(raw_name)
+                        elif raw_id and raw_id in sd_names:
+                            storage_domain_name = sd_names[raw_id]
+                        elif raw_id:
+                            storage_domain_name = raw_id
                     elif hasattr(full_disk, "storage_domain") and full_disk.storage_domain:
                         storage_domain_name = str(
                             getattr(full_disk.storage_domain, "name", None) or ""
