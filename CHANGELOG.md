@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Async Job & Progress Monitoring Tools**: Added `ovirt_job_list` and `ovirt_job_get` tools to monitor asynchronous engine operations (live migrations, disk operations, snapshot consolidations) with execution sub-steps, real-time progress percentages (0-100%), and execution host mapping.
 
+### Fixed
+- **Guest OS Kernel Version Coercion**: Fixed Pydantic validation failure in `ovirt_vm_get` when guest agent returns an `ovirtsdk4.types.Version` object instead of a string for `kernel_version`. Added `_format_version` extraction logic and Pydantic before-validator on `VmGuestOsInfo` to format `full_version` or `major.minor.build-revision`.
+- **MCP Tool Error Transparency**: Subclassed `MCPServer` into `OvirtMCPServer` and mapped `OvirtMCPError` to `ToolError` across all 136 tools so that tool errors surface detailed, actionable diagnostic messages rather than generic opaque errors.
+
 ### Documentation & Architecture
 - **Documentation Architecture Split**: Decoupled the monolithic 3,600-line `README.md` by moving the exhaustive 136-tool reference catalog into a dedicated `TOOLS.md` reference manual.
 - **Structured Domain Summary**: Added an executive resource domain overview table in `README.md` categorizing all 136 tools across 17 functional domains.

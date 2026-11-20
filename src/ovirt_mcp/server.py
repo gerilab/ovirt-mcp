@@ -1,10 +1,13 @@
 """Model Context Protocol (MCP) Server entrypoint for oVirt / OLVM."""
 
+import functools
+import inspect
 import logging
 import sys
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from ovirt_mcp.client import get_client
 from ovirt_mcp.config import get_config
@@ -356,8 +359,46 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ovirt_mcp")
 
+
+class OvirtMCPServer(MCPServer):
+    """Custom MCPServer subclass that intercepts unexpected errors and surfaces descriptive ToolError messages."""
+
+    def tool(self, *args: Any, **kwargs: Any) -> Any:
+        decorator = super().tool(*args, **kwargs)
+
+        def wrapper(fn: Any) -> Any:
+            if inspect.iscoroutinefunction(fn):
+
+                @functools.wraps(fn)
+                async def safe_async_fn(*f_args: Any, **f_kwargs: Any) -> Any:
+                    try:
+                        return await fn(*f_args, **f_kwargs)
+                    except ToolError:
+                        raise
+                    except Exception as exc:
+                        logger.exception("Error executing tool %s: %s", fn.__name__, exc)
+                        raise ToolError(f"Error executing {fn.__name__}: {exc}") from exc
+
+                return decorator(safe_async_fn)
+            else:
+
+                @functools.wraps(fn)
+                def safe_fn(*f_args: Any, **f_kwargs: Any) -> Any:
+                    try:
+                        return fn(*f_args, **f_kwargs)
+                    except ToolError:
+                        raise
+                    except Exception as exc:
+                        logger.exception("Error executing tool %s: %s", fn.__name__, exc)
+                        raise ToolError(f"Error executing {fn.__name__}: {exc}") from exc
+
+                return decorator(safe_fn)
+
+        return wrapper
+
+
 # Initialize MCP Server
-mcp = MCPServer(
+mcp = OvirtMCPServer(
     name="ovirt-mcp",
     instructions=(
         "Enterprise MCP server for managing oVirt and Oracle Linux Virtualization Manager (OLVM) "

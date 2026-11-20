@@ -1,7 +1,16 @@
 """Structured exception hierarchy for oVirt / OLVM MCP Server."""
 
+try:
+    from mcp.server.mcpserver.exceptions import ToolError
+except ImportError:
 
-class OvirtMCPError(Exception):
+    class ToolError(Exception):  # type: ignore[no-redef]
+        """Fallback ToolError base when mcpserver is not installed."""
+
+        pass
+
+
+class OvirtMCPError(ToolError):
     """Base exception for all oVirt MCP operations."""
 
     def __init__(

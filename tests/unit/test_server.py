@@ -40,3 +40,32 @@ def test_server_main_sse(monkeypatch: pytest.MonkeyPatch) -> None:
             host="0.0.0.0",
             port=8000,
         )
+
+
+@pytest.mark.asyncio
+async def test_ovirt_mcp_server_error_wrapping() -> None:
+    """Test OvirtMCPServer wraps unexpected crashes into ToolError with error details."""
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    from ovirt_mcp.client.exceptions import NotFoundError
+    from ovirt_mcp.server import OvirtMCPServer
+
+    test_server = OvirtMCPServer(name="test_err_server")
+
+    @test_server.tool(name="tool_unexpected_crash")
+    def tool_unexpected_crash() -> str:
+        raise ValueError("Critical Pydantic or internal failure detail")
+
+    @test_server.tool(name="tool_ovirt_error")
+    def tool_ovirt_error() -> str:
+        raise NotFoundError("VM", "vm-not-found-123")
+
+    # 1. Unexpected crash should surface message
+    with pytest.raises(ToolError) as exc_info:
+        await test_server.call_tool("tool_unexpected_crash", {})
+    assert "Critical Pydantic or internal failure detail" in str(exc_info.value)
+
+    # 2. OvirtMCPError should pass through
+    with pytest.raises(ToolError) as exc_info2:
+        await test_server.call_tool("tool_ovirt_error", {})
+    assert "VM 'vm-not-found-123' not found" in str(exc_info2.value)

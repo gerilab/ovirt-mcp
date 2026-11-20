@@ -1,6 +1,8 @@
 """Pydantic models for Virtual Machine resources."""
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 from ovirt_mcp.models.disk import DiskIoStats
 
@@ -130,6 +132,39 @@ class VmGuestOsInfo(BaseModel):
     )
     fqdn: str | None = Field(default=None, description="Fully-qualified domain name")
     time_zone: str | None = Field(default=None, description="Guest operating system time zone")
+
+    @field_validator("kernel_version", mode="before")
+    @classmethod
+    def _coerce_kernel_version(cls, v: Any) -> str | None:
+        """Coerce an SDK Version object or any representation into a clean version string."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s if s else None
+        full_ver = getattr(v, "full_version", None)
+        if full_ver is not None:
+            s = str(full_ver).strip()
+            if s:
+                return s
+        name = getattr(v, "name", None)
+        if name is not None:
+            s = str(name).strip()
+            if s:
+                return s
+        parts: list[str] = []
+        for attr in ("major", "minor", "build"):
+            val = getattr(v, attr, None)
+            if val is not None:
+                parts.append(str(val))
+        rev = getattr(v, "revision", None)
+        if parts:
+            res = ".".join(parts)
+            if rev is not None:
+                res += f"-{rev}"
+            return res
+        s = str(v).strip()
+        return s if s else None
 
 
 class VmHardwareSecurity(BaseModel):

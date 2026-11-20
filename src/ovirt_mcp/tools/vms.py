@@ -97,6 +97,38 @@ def _extract_ips_from_devices(devices: list[Any]) -> list[str]:
     return ips
 
 
+def _format_version(ver: Any) -> str | None:
+    """Safely format an oVirt SDK Version object or version string into a clean string."""
+    if ver is None or _is_mock_object(ver):
+        return None
+    if isinstance(ver, str):
+        s = ver.strip()
+        return s if s else None
+    full_ver = getattr(ver, "full_version", None)
+    if full_ver is not None and not _is_mock_object(full_ver):
+        s = str(full_ver).strip()
+        if s:
+            return s
+    name = getattr(ver, "name", None)
+    if name is not None and not _is_mock_object(name):
+        s = str(name).strip()
+        if s:
+            return s
+    parts: list[str] = []
+    for attr in ("major", "minor", "build"):
+        val = getattr(ver, attr, None)
+        if val is not None and not _is_mock_object(val):
+            parts.append(str(val))
+    rev = getattr(ver, "revision", None)
+    if parts:
+        res = ".".join(parts)
+        if rev is not None and not _is_mock_object(rev):
+            res += f"-{rev}"
+        return res
+    s = str(ver).strip()
+    return s if s and not _is_mock_object(ver) else None
+
+
 def extract_vm_summary(
     vm: Any,
     cluster_names: dict[str, str] | None = None,
@@ -479,10 +511,16 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
     # 2. CPU Details
     sockets, cores_per_socket, threads_per_core = 1, 1, 1
     custom_cpu_model = getattr(vm, "custom_cpu_model", None)
+    if _is_mock_object(custom_cpu_model):
+        custom_cpu_model = None
     custom_emulated_machine = getattr(vm, "custom_emulated_machine", None)
+    if _is_mock_object(custom_emulated_machine):
+        custom_emulated_machine = None
     pinning_policy = None
     auto_pinning_policy = None
     shares = getattr(vm, "cpu_shares", None)
+    if _is_mock_object(shares):
+        shares = None
 
     if hasattr(vm, "cpu") and vm.cpu:
         if hasattr(vm.cpu, "topology") and vm.cpu.topology:
@@ -603,25 +641,41 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
     # 6. Operating System and Guest Agent
     configured_os_type = None
     if hasattr(vm, "os") and vm.os:
-        configured_os_type = getattr(vm.os, "type", None)
+        raw_os_type = getattr(vm.os, "type", None)
+        if raw_os_type is not None and not _is_mock_object(raw_os_type):
+            configured_os_type = getattr(raw_os_type, "value", str(raw_os_type))
 
     distribution, kernel_version, architecture, guest_tz = None, None, None, None
     if hasattr(vm, "guest_operating_system") and vm.guest_operating_system:
         gos = vm.guest_operating_system
-        distribution = getattr(gos, "distribution", None)
-        architecture = getattr(gos, "architecture", None)
+        dist_val = getattr(gos, "distribution", None)
+        if dist_val is not None and not _is_mock_object(dist_val):
+            distribution = str(dist_val).strip() or None
+        arch_val = getattr(gos, "architecture", None)
+        if arch_val is not None and not _is_mock_object(arch_val):
+            architecture = getattr(arch_val, "value", str(arch_val))
         if hasattr(gos, "kernel") and gos.kernel:
-            kernel_version = getattr(gos.kernel, "version", None)
+            ver_val = getattr(gos.kernel, "version", None)
+            kernel_version = _format_version(ver_val)
 
     if hasattr(vm, "guest_time_zone") and vm.guest_time_zone:
-        guest_tz = getattr(vm.guest_time_zone, "name", None)
+        tz_val = getattr(vm.guest_time_zone, "name", None)
+        if tz_val is not None and not _is_mock_object(tz_val):
+            guest_tz = str(tz_val).strip() or None
+
+    raw_fqdn = getattr(vm, "fqdn", None)
+    vm_fqdn = (
+        str(raw_fqdn).strip() or None
+        if raw_fqdn is not None and not _is_mock_object(raw_fqdn)
+        else None
+    )
 
     guest_os = VmGuestOsInfo(
         configured_os_type=configured_os_type,
         distribution=distribution,
         kernel_version=kernel_version,
         architecture=architecture,
-        fqdn=getattr(vm, "fqdn", None),
+        fqdn=vm_fqdn,
         time_zone=guest_tz,
     )
 
@@ -671,15 +725,28 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
         ha_priority = getattr(vm.high_availability, "priority", None)
 
     watchdog_action = None
-    if hasattr(vm, "watchdogs") and vm.watchdogs:
+    if (
+        hasattr(vm, "watchdogs")
+        and vm.watchdogs
+        and not _is_mock_object(vm.watchdogs)
+        and len(vm.watchdogs) > 0
+    ):
         wd = vm.watchdogs[0]
-        if hasattr(wd, "action"):
+        if hasattr(wd, "action") and not _is_mock_object(wd.action):
             watchdog_action = getattr(wd.action, "value", str(wd.action))
 
     lease_storage_domain_name = None
-    if hasattr(vm, "lease") and vm.lease and hasattr(vm.lease, "storage_domain"):
+    if (
+        hasattr(vm, "lease")
+        and vm.lease
+        and not _is_mock_object(vm.lease)
+        and hasattr(vm.lease, "storage_domain")
+    ):
         sd_ref = vm.lease.storage_domain
-        lease_storage_domain_name = getattr(sd_ref, "name", None) or getattr(sd_ref, "id", None)
+        if sd_ref and not _is_mock_object(sd_ref):
+            raw_sd_name = getattr(sd_ref, "name", None) or getattr(sd_ref, "id", None)
+            if raw_sd_name and not _is_mock_object(raw_sd_name):
+                lease_storage_domain_name = str(raw_sd_name)
 
     high_availability = VmHighAvailability(
         enabled=ha_enabled,
@@ -728,11 +795,27 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
 
     # 10. Lifecycle Timestamps & Pending Configuration
     creation_time = (
-        str(vm.creation_time) if hasattr(vm, "creation_time") and vm.creation_time else None
+        str(vm.creation_time)
+        if hasattr(vm, "creation_time")
+        and vm.creation_time
+        and not _is_mock_object(vm.creation_time)
+        else None
     )
-    start_time = str(vm.start_time) if hasattr(vm, "start_time") and vm.start_time else None
-    stop_time = str(vm.stop_time) if hasattr(vm, "stop_time") and vm.stop_time else None
+    start_time = (
+        str(vm.start_time)
+        if hasattr(vm, "start_time") and vm.start_time and not _is_mock_object(vm.start_time)
+        else None
+    )
+    stop_time = (
+        str(vm.stop_time)
+        if hasattr(vm, "stop_time") and vm.stop_time and not _is_mock_object(vm.stop_time)
+        else None
+    )
     stop_reason = getattr(vm, "stop_reason", None)
+    if stop_reason is not None and not _is_mock_object(stop_reason):
+        stop_reason = str(stop_reason)
+    else:
+        stop_reason = None
     next_run_exists = bool(getattr(vm, "next_run_configuration_exists", False))
 
     lifecycle = VmLifecycleInfo(
@@ -911,7 +994,15 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
     # 13. Status details
     status_obj = getattr(vm, "status", None)
     status_str = getattr(status_obj, "value", str(status_obj or "unknown")).lower()
-    status_detail = getattr(vm, "status_detail", None)
+    raw_status_detail = getattr(vm, "status_detail", None)
+    status_detail = (
+        str(raw_status_detail)
+        if raw_status_detail is not None and not _is_mock_object(raw_status_detail)
+        else None
+    )
+
+    raw_desc = getattr(vm, "description", None)
+    vm_desc = str(raw_desc) if raw_desc is not None and not _is_mock_object(raw_desc) else None
 
     # 14. Real-time runtime telemetry
     runtime_telemetry = None
@@ -928,7 +1019,7 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
         cluster_name=cluster_name,
         host_name=host_name,
         template_name=template_name,
-        description=getattr(vm, "description", None),
+        description=vm_desc,
         cpu=cpu_details,
         memory=memory_policy,
         io_scsi=io_scsi,

@@ -375,3 +375,130 @@ def test_extract_vm_summary_with_sdk_reported_devices() -> None:
 
     summary = extract_vm_summary(mock_vm)
     assert summary.ip_addresses == ["10.0.0.55", "fe80::1"]
+
+
+def test_vm_guest_os_info_version_coercion() -> None:
+    """Test VmGuestOsInfo coerces SDK Version objects and strings correctly."""
+    import ovirtsdk4.types as types
+
+    from ovirt_mcp.models.vm import VmGuestOsInfo
+
+    # 1. SDK Version with full_version
+    ver_full = types.Version(full_version="5.14.0-427.35.1.el9_4.x86_64")
+    info1 = VmGuestOsInfo(kernel_version=ver_full)
+    assert info1.kernel_version == "5.14.0-427.35.1.el9_4.x86_64"
+
+    # 2. SDK Version with major/minor/build/revision
+    ver_parts = types.Version(major=4, minor=18, build=0, revision=305)
+    info2 = VmGuestOsInfo(kernel_version=ver_parts)
+    assert info2.kernel_version == "4.18.0-305"
+
+    # 3. String version
+    info3 = VmGuestOsInfo(kernel_version="5.15.0-101.generic")
+    assert info3.kernel_version == "5.15.0-101.generic"
+
+    # 4. None version
+    info4 = VmGuestOsInfo(kernel_version=None)
+    assert info4.kernel_version is None
+
+
+def test_get_vm_tool_with_sdk_version_kernel() -> None:
+    """Test get_vm_tool correctly handles an ovirtsdk4.types.Version in kernel_version."""
+    import ovirtsdk4.types as types
+
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_system_service = MagicMock()
+    mock_vms_service = MagicMock()
+    mock_vm_service = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_client.config.mcp_compact_mode = False
+    mock_conn.system_service.return_value = mock_system_service
+    mock_system_service.vms_service.return_value = mock_vms_service
+    mock_vms_service.vm_service.return_value = mock_vm_service
+
+    mock_vm = MagicMock()
+    mock_vm.id = "vm-uuid-999"
+    mock_vm.name = "db-srv01"
+    mock_vm.status.value = "up"
+    mock_vm.cluster.id = "cl-1"
+    mock_vm.cluster.name = "ProdCluster"
+    mock_vm.host.id = "h-1"
+    mock_vm.host.name = "node01.example.com"
+    mock_vm.template.id = "t-1"
+    mock_vm.template.name = "Blank"
+    mock_vm.description = "Database node"
+
+    # CPU
+    mock_vm.cpu.topology.sockets = 2
+    mock_vm.cpu.topology.cores = 4
+    mock_vm.cpu.topology.threads = 1
+    mock_vm.cpu.cpu_pinning_policy = None
+    mock_vm.cpu_pinning_policy = None
+    mock_vm.cpu.shares = None
+    mock_vm.auto_pinning_policy = None
+
+    # Memory
+    mock_vm.memory = 16 * 1024 * 1024 * 1024
+    mock_vm.memory_policy.guaranteed = 8 * 1024 * 1024 * 1024
+    mock_vm.memory_policy.max = 32 * 1024 * 1024 * 1024
+    mock_vm.memory_policy.ballooning = True
+
+    # IO SCSI
+    mock_vm.io.threads = 2
+    mock_vm.virtio_scsi.enabled = True
+    mock_vm.virtio_scsi_multi_queues = 4
+
+    # Affinity
+    mock_vm.placement_policy.affinity.value = "migratable"
+    mock_vm.placement_policy.hosts = []
+    mock_vm.affinity_labels = []
+
+    # Guest OS with real SDK Version object
+    mock_vm.os.type = "rhel_8x64"
+    mock_vm.guest_operating_system.distribution = "Oracle Linux Server"
+    mock_vm.guest_operating_system.architecture = "x86_64"
+    mock_vm.guest_operating_system.kernel.version = types.Version(
+        full_version="5.14.0-427.35.1.el9_4.x86_64"
+    )
+    mock_vm.guest_time_zone.name = "Europe/Budapest"
+    mock_vm.fqdn = "db-srv01.example.com"
+
+    # Hardware
+    mock_vm.bios.type.value = "q35_ovmf"
+    mock_vm.tpm_enabled = True
+    mock_vm.delete_protected = True
+    mock_vm.stateless = False
+    mock_vm.soundcard_enabled = False
+    mock_vm.usb.enabled = False
+    mock_vm.type.value = "server"
+    mock_vm.display.type.value = "vnc"
+    mock_vm.watchdogs = []
+    mock_vm.lease = None
+    mock_vm.migration = None
+    mock_vm.high_availability = None
+    mock_vm.status_detail = None
+    mock_vm.creation_time = None
+    mock_vm.start_time = None
+    mock_vm.stop_time = None
+
+    # Empty sub-services
+    mock_vm_service.cdroms_service.return_value.list.return_value = []
+    mock_vm_service.watchdogs_service.return_value.list.return_value = []
+    mock_vm_service.disk_attachments_service.return_value.list.return_value = []
+    mock_vm_service.nics_service.return_value.list.return_value = []
+    mock_vm_service.snapshots_service.return_value.list.return_value = []
+    mock_vm_service.statistics_service.return_value.list.return_value = []
+    mock_vm_service.reported_devices_service.return_value.list.return_value = []
+
+    mock_client.find_resource_by_id_or_name.return_value = mock_vm
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        result = get_vm_tool(name_or_id="db-srv01", compact=False)
+
+    assert isinstance(result, VmDetail)
+    assert result.name == "db-srv01"
+    assert result.guest_os.kernel_version == "5.14.0-427.35.1.el9_4.x86_64"
+    assert result.guest_os.distribution == "Oracle Linux Server"
+    assert result.guest_os.fqdn == "db-srv01.example.com"
