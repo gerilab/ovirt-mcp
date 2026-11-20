@@ -679,11 +679,11 @@ Create `.vscode/mcp.json` inside your cloned project root using the dynamic `${w
 
 ### Method 5: Remote Linux Jumpbox via SSH (VS Code Remote - SSH)
 
-This is the standard enterprise and homelab architecture: your local developer workstation (Windows, macOS, or Linux laptop) connects over SSH to a remote Linux development server, jumpbox, or bastion host (e.g., `node01.example.com`) where `ovirt-mcp` is installed.
+This is the standard enterprise architecture: your local developer workstation (Windows, macOS, or Linux laptop) connects over SSH to a remote Linux development server, jumpbox, or bastion host (e.g., `jumpbox-srv01.example.com`) where `ovirt-mcp` is installed.
 
 #### Why Use a Remote SSH Jumpbox?
 
-In production and homelab environments, the oVirt/OLVM engine API (e.g. `https://olvm-engine.example.com/ovirt-engine/api`) resides on an **isolated management network / VLAN** (e.g., `10.0.10.0/24`). Developer workstations usually cannot—and for security reasons *should not*—directly route into hypervisor management interfaces.
+In production environments, the oVirt/OLVM engine API (e.g. `https://olvm-engine.example.com/ovirt-engine/api`) resides on an **isolated management network / VLAN** (e.g., `10.0.10.0/24`). Developer workstations usually cannot—and for security reasons *should not*—directly route into hypervisor management interfaces.
 
 A Linux jumpbox or CI/CD runner sits directly inside the management network with access to the engine API. Connecting via SSH allows developers to run AI coding assistants seamlessly while keeping all network traffic strictly within the protected hypervisor zone.
 

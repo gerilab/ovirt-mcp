@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation Architecture Split**: Decoupled the monolithic 3,600-line `README.md` by moving the exhaustive 136-tool reference catalog into a dedicated `TOOLS.md` reference manual.
 - **Structured Domain Summary**: Added an executive resource domain overview table in `README.md` categorizing all 136 tools across 17 functional domains.
 - **Updated Telemetry References**: Expanded tool documentation in `TOOLS.md` with detailed schemas and examples for real-time per-disk I/O, VM runtime telemetry, storage domain overcommitment health, and event UUID correlations.
+- **Sanitized Documentation Examples**: Anonymized all internal hostnames, domains, and IP ranges across documentation and unit test fixtures to RFC 2606 (`example.com`) and RFC 5737 (`10.0.0.0/24`, `192.0.2.0/24`) compliant placeholders.
 
 ## [0.8.2] - 2026-11-20
 
