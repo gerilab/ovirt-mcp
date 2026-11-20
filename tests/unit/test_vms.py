@@ -81,6 +81,7 @@ def test_list_vms_tool_with_filters() -> None:
         mock_vms_service.list.assert_called_once_with(
             search='cluster="Default" and status="up"',
             max=25,
+            follow="reported_devices",
         )
 
 
@@ -340,3 +341,37 @@ def test_get_vm_tool_compact() -> None:
         assert result.disks_summary == ["os-disk (20.0 GB)"]
         assert result.nics_count == 1
         assert result.snapshots_count == 0
+
+
+def test_extract_vm_summary_with_sdk_reported_devices() -> None:
+    """Test extracting IP addresses when oVirt SDK populates reported_devices."""
+    mock_vm = MagicMock()
+    mock_vm.id = "test-uuid"
+    mock_vm.name = "test-vm"
+    mock_vm.status.value = "up"
+    mock_vm.cluster.name = "Default"
+    mock_vm.host.name = "host1"
+    mock_vm.memory = 2 * 1024 * 1024 * 1024
+    mock_vm.cpu.topology.sockets = 1
+    mock_vm.cpu.topology.cores = 2
+    mock_vm.cpu.topology.threads = 1
+    mock_vm.os.type = "ol_8"
+    mock_vm.high_availability.enabled = False
+    mock_vm.description = "Test VM"
+    mock_vm.fqdn = "test-vm.local"
+
+    mock_dev1 = MagicMock()
+    mock_ip1 = MagicMock()
+    mock_ip1.address = "10.0.0.55"
+    mock_dev1.ips = [mock_ip1]
+
+    mock_dev2 = MagicMock()
+    mock_ip2 = MagicMock()
+    mock_ip2.address = "fe80::1"
+    mock_dev2.ips = [mock_ip2]
+
+    mock_vm.reported_devices = [mock_dev1, mock_dev2]
+    mock_vm.guest_reported_devices = None
+
+    summary = extract_vm_summary(mock_vm)
+    assert summary.ip_addresses == ["10.0.0.55", "fe80::1"]

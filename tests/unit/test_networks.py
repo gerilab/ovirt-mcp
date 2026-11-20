@@ -63,6 +63,13 @@ def test_list_vm_nics_success() -> None:
     mock_nic.plugged = True
     mock_nic.linked = True
 
+    mock_rep_dev = MagicMock()
+    mock_rep_dev.mac.address = "52:54:00:11:22:33"
+    mock_ip = MagicMock()
+    mock_ip.address = "10.0.0.100"
+    mock_rep_dev.ips = [mock_ip]
+    mock_vm_service.reported_devices_service().list.return_value = [mock_rep_dev]
+
     mock_vm_service.nics_service().list.return_value = [mock_nic]
 
     with patch("ovirt_mcp.tools.networks.get_client", return_value=mock_client):
@@ -76,6 +83,7 @@ def test_list_vm_nics_success() -> None:
     assert res[0].vnic_profile_name == "ovirtmgmt"
     assert res[0].plugged is True
     assert res[0].linked is True
+    assert res[0].ip_addresses == ["10.0.0.100"]
 
 
 # ── ADD VM NIC TESTS ──────────────────────────────────────────────────────────

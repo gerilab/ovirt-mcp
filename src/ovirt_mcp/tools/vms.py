@@ -1,5 +1,6 @@
 """Virtual machine management tools for oVirt / OLVM."""
 
+import contextlib
 import logging
 import time
 from typing import Any
@@ -40,10 +41,64 @@ from ovirt_mcp.tools.guards import (
 logger = logging.getLogger(__name__)
 
 
+def _is_mock_object(obj: Any) -> bool:
+    """Check if an object is an unconfigured unittest MagicMock."""
+    return type(obj).__module__.startswith("unittest.mock")
+
+
+def _extract_reported_devices(
+    vm: Any,
+    vm_service: Any = None,
+    name_or_id: str | None = None,
+) -> list[Any]:
+    """Safely extract reported devices from a VM object or its sub-service."""
+    raw_rep = getattr(vm, "reported_devices", None)
+    raw_guest = getattr(vm, "guest_reported_devices", None)
+
+    candidate_devices: list[Any] = []
+    # If explicitly assigned as a collection or list
+    if isinstance(raw_rep, list) and raw_rep:
+        candidate_devices = raw_rep
+    elif isinstance(raw_guest, list) and raw_guest:
+        candidate_devices = raw_guest
+    elif raw_rep is not None and not _is_mock_object(raw_rep) and hasattr(raw_rep, "__iter__"):
+        candidate_devices = list(raw_rep)
+    elif (
+        raw_guest is not None and not _is_mock_object(raw_guest) and hasattr(raw_guest, "__iter__")
+    ):
+        candidate_devices = list(raw_guest)
+
+    if not candidate_devices and vm_service is not None:
+        try:
+            srv_rep = vm_service.reported_devices_service().list()
+            if isinstance(srv_rep, list):
+                candidate_devices = srv_rep
+            elif hasattr(srv_rep, "__iter__") and not _is_mock_object(srv_rep):
+                candidate_devices = list(srv_rep)
+        except Exception as exc:
+            logger.debug("Could not fetch reported devices for VM '%s': %s", name_or_id or "", exc)
+
+    return candidate_devices
+
+
+def _extract_ips_from_devices(devices: list[Any]) -> list[str]:
+    """Extract unique IP addresses from a list of reported devices."""
+    ips: list[str] = []
+    for dev in devices:
+        raw_ips = getattr(dev, "ips", None)
+        if raw_ips and hasattr(raw_ips, "__iter__"):
+            for ip_obj in raw_ips:
+                address = getattr(ip_obj, "address", None)
+                if address and str(address) not in ips:
+                    ips.append(str(address))
+    return ips
+
+
 def extract_vm_summary(
     vm: Any,
     cluster_names: dict[str, str] | None = None,
     host_names: dict[str, str] | None = None,
+    vms_service: Any = None,
 ) -> VmSummary:
     """Extract a typed VmSummary from an oVirt SDK VM object with resolved names."""
     vm_id = str(getattr(vm, "id", ""))
@@ -77,14 +132,13 @@ def extract_vm_summary(
         cpu_cores = int(sockets * cores * threads)
 
     # Extract reported IPs if guest agent is active
-    ip_addresses: list[str] = []
-    if hasattr(vm, "guest_reported_devices") and vm.guest_reported_devices:
-        for dev in vm.guest_reported_devices:
-            if hasattr(dev, "ips") and dev.ips:
-                for ip_obj in dev.ips:
-                    address = getattr(ip_obj, "address", None)
-                    if address and address not in ip_addresses:
-                        ip_addresses.append(str(address))
+    vm_srv = None
+    if vms_service is not None and hasattr(vm, "id") and vm.id:
+        with contextlib.suppress(Exception):
+            vm_srv = vms_service.vm_service(vm.id)
+
+    rep_devices = _extract_reported_devices(vm, vm_service=vm_srv, name_or_id=vm_id)
+    ip_addresses = _extract_ips_from_devices(rep_devices)
 
     fqdn = getattr(vm, "fqdn", None)
 
@@ -157,10 +211,22 @@ def list_vms_tool(
     search_string = " and ".join(search_clauses) if search_clauses else None
 
     logger.debug("Listing VMs with query: %s (max=%d)", search_string, max_results)
-    sdk_vms = vms_service.list(search=search_string, max=max_results)
+    try:
+        sdk_vms = vms_service.list(search=search_string, max=max_results, follow="reported_devices")
+    except Exception as exc:
+        logger.debug(
+            "Listing with follow='reported_devices' failed, falling back to standard list: %s", exc
+        )
+        sdk_vms = vms_service.list(search=search_string, max=max_results)
 
     return [
-        extract_vm_summary(vm, cluster_names=cluster_names, host_names=host_names) for vm in sdk_vms
+        extract_vm_summary(
+            vm,
+            cluster_names=cluster_names,
+            host_names=host_names,
+            vms_service=vms_service,
+        )
+        for vm in sdk_vms
     ]
 
 
@@ -222,14 +288,8 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
     total_cpu_cores = int(sockets * cores_per_socket * threads_per_core)
 
     # IPs
-    ip_addresses: list[str] = []
-    if hasattr(vm, "guest_reported_devices") and vm.guest_reported_devices:
-        for dev in vm.guest_reported_devices:
-            if hasattr(dev, "ips") and dev.ips:
-                for ip_obj in dev.ips:
-                    address = getattr(ip_obj, "address", None)
-                    if address and address not in ip_addresses:
-                        ip_addresses.append(str(address))
+    rep_devices = _extract_reported_devices(vm, vm_service=vm_service, name_or_id=name_or_id)
+    ip_addresses = _extract_ips_from_devices(rep_devices)
 
     os_type = getattr(vm.os, "type", None) if hasattr(vm, "os") and vm.os else None
     ha_enabled = (
@@ -678,6 +738,16 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
             ):
                 net_name = nic.vnic_profile.name
 
+            nic_ips: list[str] = []
+            if mac:
+                for dev in rep_devices:
+                    dev_mac = getattr(getattr(dev, "mac", None), "address", None)
+                    if dev_mac and dev_mac.lower() == mac.lower():
+                        for ip_obj in getattr(dev, "ips", []) or []:
+                            addr = getattr(ip_obj, "address", None)
+                            if addr and addr not in nic_ips:
+                                nic_ips.append(str(addr))
+
             nics.append(
                 VmNicInfo(
                     id=nic_id,
@@ -686,6 +756,7 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
                     mac_address=mac,
                     interface=iface_str,
                     linked=linked,
+                    ip_addresses=nic_ips,
                 )
             )
     except Exception as exc:

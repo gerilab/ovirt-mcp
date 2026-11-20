@@ -1,6 +1,7 @@
 """Tools for managing VM virtual network interfaces (vNICs) and vNIC profiles."""
 
 import logging
+from typing import Any
 
 import ovirtsdk4.types as sdk_types
 
@@ -47,6 +48,15 @@ def list_vm_nics_tool(name_or_id: str) -> list[VmNicDetail]:
     except Exception as prof_err:
         logger.debug("Transient error caching vNIC profiles: %s", prof_err)
 
+    # Pre-fetch reported devices for IP association
+    reported_devices: list[Any] = []
+    try:
+        reported_devices = vm_service.reported_devices_service().list()
+    except Exception as rep_err:
+        logger.debug(
+            "Transient error fetching reported devices for VM '%s': %s", name_or_id, rep_err
+        )
+
     nic_list: list[VmNicDetail] = []
     try:
         raw_nics = vm_service.nics_service().list()
@@ -69,6 +79,16 @@ def list_vm_nics_tool(name_or_id: str) -> list[VmNicDetail]:
             plugged = bool(getattr(nic, "plugged", True))
             linked = bool(getattr(nic, "linked", True))
 
+            nic_ips: list[str] = []
+            if mac_addr:
+                for dev in reported_devices:
+                    dev_mac = getattr(getattr(dev, "mac", None), "address", None)
+                    if dev_mac and dev_mac.lower() == mac_addr.lower():
+                        for ip_obj in getattr(dev, "ips", []) or []:
+                            addr = getattr(ip_obj, "address", None)
+                            if addr and addr not in nic_ips:
+                                nic_ips.append(str(addr))
+
             nic_list.append(
                 VmNicDetail(
                     id=n_id,
@@ -80,6 +100,7 @@ def list_vm_nics_tool(name_or_id: str) -> list[VmNicDetail]:
                     network_name=net_name,
                     plugged=plugged,
                     linked=linked,
+                    ip_addresses=nic_ips,
                 )
             )
     except Exception as exc:

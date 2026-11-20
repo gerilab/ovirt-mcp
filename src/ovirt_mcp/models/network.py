@@ -19,6 +19,9 @@ class VmNicDetail(BaseModel):
     network_name: str | None = Field(default=None, description="Underlying logical network name")
     plugged: bool = Field(description="Whether the NIC is plugged (card inserted in slot)")
     linked: bool = Field(description="Whether network link is up (cable connected)")
+    ip_addresses: list[str] = Field(
+        default_factory=list, description="Reported IPv4/IPv6 addresses from guest agent"
+    )
 
 
 class VmNicResult(BaseModel):
