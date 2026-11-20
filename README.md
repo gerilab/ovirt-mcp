@@ -164,8 +164,8 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
    - [Method 2: Classic 24/7 Docker Container (Network SSE Daemon)](#method-2-classic-247-docker-container-network-sse-daemon)
    - [Method 3: Native Python Virtual Environment (Linux & macOS)](#method-3-native-python-virtual-environment-linux--macos)
    - [Method 4: Windows Desktop & IDE Setup (Step-by-Step for Windows)](#method-4-windows-desktop--ide-setup-step-by-step-for-windows)
-   - [Method 5: Remote Linux IDE (VS Code with Remote - SSH / WSL)](#method-5-remote-linux-ide-vs-code-with-remote---ssh--wsl)
-   - [Method 6: Kiro IDE on Remote Linux](#method-6-kiro-ide-on-remote-linux)
+   - [Method 5: Remote Linux Jumpbox via SSH (VS Code Remote - SSH)](#method-5-remote-linux-jumpbox-via-ssh-vs-code-remote---ssh)
+   - [Method 6: Kiro IDE on Remote Linux (via SSH)](#method-6-kiro-ide-on-remote-linux-via-ssh)
 8. [Testing & Quality Verification](#testing--quality-verification)
 9. [Troubleshooting & FAQ](#troubleshooting--faq)
 
@@ -3263,38 +3263,145 @@ Create `.vscode/mcp.json` inside your cloned project root using the dynamic `${w
 
 ---
 
-### Method 5: Remote Linux IDE (VS Code with Remote - SSH / WSL)
+### Method 5: Remote Linux Jumpbox via SSH (VS Code Remote - SSH)
 
-This is the standard enterprise setup: your developer workstation runs **VS Code**, connected via **Remote - SSH** (or **WSL**) to a remote Linux development server, jumpbox, or VM where `ovirt-mcp` is checked out and its Python virtualenv is installed.
+This is the standard enterprise and homelab architecture: your local developer workstation (Windows, macOS, or Linux laptop) connects over SSH to a remote Linux development server, jumpbox, or bastion host (e.g., `node01.example.com`) where `ovirt-mcp` is installed.
 
-Inside the remote VS Code session, your AI coding extensions (such as **Cline**, **Roo Code**, **Continue**, or **GitHub Copilot**) run directly on the remote Linux machine.
+#### Why Use a Remote SSH Jumpbox?
 
-#### Step 1: Verify the Remote Virtualenv
+In production and homelab environments, the oVirt/OLVM engine API (e.g. `https://olvm-engine.example.com/ovirt-engine/api`) resides on an **isolated management network / VLAN** (e.g., `10.0.10.0/24`). Developer workstations usually cannot—and for security reasons *should not*—directly route into hypervisor management interfaces.
 
-On the remote Linux server:
-```bash
-cd /path/to/ovirt-mcp
-source .venv/bin/activate
+A Linux jumpbox or CI/CD runner sits directly inside the management network with access to the engine API. Connecting via SSH allows developers to run AI coding assistants seamlessly while keeping all network traffic strictly within the protected hypervisor zone.
 
-# Verify server boots cleanly in stdio mode:
-python -m ovirt_mcp.server --help
+#### Understanding the Remote Execution Model
+
+When you connect to a remote host using VS Code Remote - SSH:
+
+| Component | Runs On Local Laptop | Runs On Remote Linux Jumpbox | Notes |
+|---|---|---|---|
+| **VS Code UI** | Windows / macOS | — | Handles editor window, menus, keystrokes, and rendering. |
+| **VS Code Server (`.vscode-server`)** | — | Linux daemon | Runs extension hosts, terminals, and file system watchers. |
+| **AI Extensions (Cline, Roo, etc.)** | — | Linux extension host | Spawns MCP client logic directly on the jumpbox. |
+| **`ovirt-mcp` Process** | — | Linux subprocess | Executes via stdio using the Linux virtual environment. |
+| **oVirt / OLVM API Communication** | — | Linux network stack | Direct HTTPS communication to internal engine IP/FQDN. |
+
+> [!IMPORTANT]
+> Because the extension host runs on the **remote Linux machine**, all paths in your MCP configuration must be **Linux paths** (e.g., `/home/devops/ovirt-mcp` or `${workspaceFolder}`), **NOT** Windows paths (`C:\...`).
+
+#### Step 1: Configure SSH Access on Your Local Laptop
+
+On your local workstation, add the jumpbox to your SSH configuration file (`~/.ssh/config` on Linux/macOS or `%USERPROFILE%\.ssh\config` on Windows):
+
+```ssh
+Host olvm-jumpbox
+    HostName 10.0.10.25
+    User devops
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 60
 ```
 
-#### Step 2: Configure VS Code Extension
+1. Open **VS Code** on your local machine.
+2. Install the official **Remote - SSH** extension (`ms-vscode-remote.remote-ssh`).
+3. Press `F1` or `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), type `Remote-SSH: Connect to Host...`, and select `olvm-jumpbox`.
+4. A new VS Code window will open connected to the remote jumpbox (indicated in the bottom-left corner).
 
-##### Option A: For Cline or Roo Code (Global Extension Settings)
-Edit `cline_mcp_settings.json` (accessible via the Cline MCP Settings tab):
+#### Step 2: Set Up `ovirt-mcp` on the Remote Server
+
+In the integrated terminal of your remote VS Code window (``Ctrl+` ``):
+
+```bash
+# Clone the repository
+git clone https://github.com/gerilab/ovirt-mcp.git ~/ovirt-mcp
+cd ~/ovirt-mcp
+
+# Create and activate Python virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Upgrade pip and install package
+pip install --upgrade pip
+pip install -e .
+
+# Verify the CLI tool boots cleanly:
+ovirt-mcp --help
+```
+
+#### Step 3: Open the Remote Project Directory
+
+In VS Code:
+1. Click **File -> Open Folder...**
+2. Enter the path where you cloned the repository (e.g. `/home/devops/ovirt-mcp`).
+3. Click **OK**.
+
+Opening the workspace folder ensures that `${workspaceFolder}` dynamically and accurately resolves to your remote repository path.
+
+#### Step 4: Extension Setup on Remote Host (Avoid the "Local vs Remote" Trap!)
+
+> [!WARNING]
+> **Common Pitfall (Local vs. Remote Extensions):**
+> Extensions like **Cline** or **Roo Code** must be installed inside the **remote extension host**, not just locally on your laptop!
+> In VS Code's Extensions panel (`Ctrl+Shift+X`), look for the section labeled **SSH: olvm-jumpbox**. If Cline or Roo Code shows an **"Install in SSH: olvm-jumpbox"** button, click it.
+
+#### Step 5: Configure MCP Server (Method A or Method B)
+
+Choose the configuration style that best fits your workflow:
+
+##### Option 1: Workspace-Level Configuration (`.vscode/mcp.json`) — Recommended
+
+Inside your remote workspace, create or edit `.vscode/mcp.json`:
+
+###### Method A: Using a Remote `.env` File
+Create `~/ovirt-mcp/.env` with your engine credentials, then configure `.vscode/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "${workspaceFolder}/.venv/bin/ovirt-mcp",
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
+
+###### Method B: Zero `.env` File (Credentials Directly in `mcp.json`)
+If you prefer keeping credentials entirely inside the IDE settings without an extra `.env` file on disk:
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "${workspaceFolder}/.venv/bin/ovirt-mcp",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+        "OVIRT_USERNAME": "admin@internal",
+        "OVIRT_PASSWORD": "YourSecurePasswordHere",
+        "OVIRT_INSECURE": "true",
+        "OVIRT_AUTO_DOWNLOAD_CA": "true",
+        "MCP_COMPACT_MODE": "true",
+        "MCP_SAFE_MODE": "true",
+        "MCP_READ_ONLY": "false"
+      }
+    }
+  }
+}
+```
+
+##### Option 2: Cline / Roo Code Remote Settings File
+
+If your extension manages MCP servers via its own JSON file (e.g. `cline_mcp_settings.json`), open the extension MCP settings tab in the remote window and add:
 
 ```json
 {
   "mcpServers": {
     "ovirt": {
-      "command": "/path/to/ovirt-mcp/.venv/bin/python",
-      "args": ["-m", "ovirt_mcp.server"],
-      "cwd": "/path/to/ovirt-mcp",
+      "command": "/home/devops/ovirt-mcp/.venv/bin/ovirt-mcp",
+      "args": [],
+      "cwd": "/home/devops/ovirt-mcp",
       "env": {
         "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
-        "OVIRT_USERNAME": "mcp-service@internal-authz",
+        "OVIRT_USERNAME": "admin@internal",
         "OVIRT_PASSWORD": "YourSecurePasswordHere",
         "OVIRT_INSECURE": "true",
         "MCP_COMPACT_MODE": "true"
@@ -3304,51 +3411,90 @@ Edit `cline_mcp_settings.json` (accessible via the Cline MCP Settings tab):
 }
 ```
 
-##### Option B: Workspace-Level Configuration (`.vscode/mcp.json`)
-Create `.vscode/mcp.json` inside your project workspace root:
+#### Step 6: Verify in Remote VS Code
+
+1. In the Cline or Roo Code MCP panel on the remote host, check that the `ovirt` server has a green status indicator and reports all 134 tools.
+2. In the AI chat, submit a test prompt:
+   ```text
+   Test hypervisor connection using ovirt_test_connection, then list the first 5 VMs with ovirt_vm_list.
+   ```
+
+---
+
+### Method 6: Kiro IDE on Remote Linux (via SSH)
+
+**Kiro IDE** is an AI-native agentic development environment equipped with built-in agent loops and first-class Model Context Protocol (MCP) support. When working in enterprise virtualized environments, developers can use Kiro IDE connected directly to remote Linux infrastructure over SSH.
+
+#### Architecture Overview for Kiro IDE
+
+Just like with VS Code Remote - SSH, when Kiro IDE connects to a remote Linux jumpbox:
+- The Kiro UI client runs on your local machine.
+- Kiro's background agent runner and MCP server processes execute **remotely** on the jumpbox.
+- All 134 `ovirt-mcp` tools run natively in the remote Linux virtualenv with direct access to internal OLVM/oVirt management subnets.
+
+#### Step 1: Connect to Remote Linux Host in Kiro
+
+1. Launch **Kiro IDE** on your workstation.
+2. Open the remote connection manager (e.g. `Remote: Connect to Host via SSH` or open an SSH workspace).
+3. Connect using your SSH credentials (or reference the SSH host alias defined in `~/.ssh/config`).
+4. Once connected, open the cloned `ovirt-mcp` directory (e.g., `/home/devops/ovirt-mcp`).
+
+#### Step 2: Configure `.kiro/mcp.json`
+
+Kiro IDE uses a dedicated workspace configuration directory: `.kiro/`.
+
+Inside your remote workspace root, create `.kiro/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "ovirt": {
-      "command": "${workspaceFolder}/.venv/bin/python",
-      "args": ["-m", "ovirt_mcp.server"],
+      "command": "${workspaceFolder}/.venv/bin/ovirt-mcp",
+      "args": [],
       "cwd": "${workspaceFolder}",
       "env": {
         "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
-        "OVIRT_USERNAME": "mcp-service@internal-authz",
+        "OVIRT_USERNAME": "admin@internal",
         "OVIRT_PASSWORD": "YourSecurePasswordHere",
         "OVIRT_INSECURE": "true",
-        "MCP_COMPACT_MODE": "true"
-      }
+        "OVIRT_AUTO_DOWNLOAD_CA": "true",
+        "MCP_COMPACT_MODE": "true",
+        "MCP_SAFE_MODE": "true",
+        "MCP_READ_ONLY": "false"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "ovirt_test_connection",
+        "ovirt_vm_list",
+        "ovirt_vm_get",
+        "ovirt_host_list",
+        "ovirt_host_stats",
+        "ovirt_storage_domain_list",
+        "ovirt_cluster_list"
+      ]
     }
   }
 }
 ```
 
 > [!TIP]
-> You can either store credentials in `.env` and specify `"cwd": "${workspaceFolder}"`, or store them directly inside the `"env": { ... }` block of `mcp.json`. Both methods are fully supported.
+> **Kiro `autoApprove` List:**
+> By populating the `"autoApprove"` array with harmless read-only inspection tools, Kiro's AI agent can explore hypervisor health, inventory, and metrics instantly without popping up manual permission prompts for every single query.
 
----
+#### Step 3: Global Configuration (`~/.kiro/mcp.json`)
 
-### Method 6: Kiro IDE on Remote Linux
-
-**Kiro IDE** is an agentic AI-native IDE. When working in Kiro connected to a remote Linux workspace or running Kiro on a Linux desktop/server:
-
-#### Step 1: Configure `.kiro/mcp.json` or `.kiro/settings.json`
-
-In your workspace root (or in user settings), configure `ovirt-mcp`:
+If you want `ovirt-mcp` to be available across all workspaces on your remote Linux host, place the configuration in `~/.kiro/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "ovirt": {
-      "command": "/path/to/ovirt-mcp/.venv/bin/python",
-      "args": ["-m", "ovirt_mcp.server"],
-      "cwd": "/path/to/ovirt-mcp",
+      "command": "/home/devops/ovirt-mcp/.venv/bin/ovirt-mcp",
+      "args": [],
+      "cwd": "/home/devops/ovirt-mcp",
       "env": {
         "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
-        "OVIRT_USERNAME": "mcp-service@internal-authz",
+        "OVIRT_USERNAME": "admin@internal",
         "OVIRT_PASSWORD": "YourSecurePasswordHere",
         "OVIRT_INSECURE": "true",
         "MCP_COMPACT_MODE": "true"
@@ -3360,15 +3506,26 @@ In your workspace root (or in user settings), configure `ovirt-mcp`:
 }
 ```
 
-#### Step 2: Verification in Kiro
+#### Step 4: Verification and Live Interaction in Kiro
 
-1. Open Kiro on your workspace directory.
-2. In Kiro's MCP panel, verify that `ovirt` appears and status is **Connected** with 134 tools available.
-3. In the Kiro chat prompt, run a test query:
-   ```text
-   Verify hypervisor connectivity using ovirt_test_connection, then list all VMs with ovirt_vm_list.
-   ```
-4. For mutating operations (e.g. `ovirt_vm_snapshot_create`), Kiro will respect `MCP_SAFE_MODE` and ask for confirmation (`confirm=True`).
+1. In Kiro's MCP panel, verify that `ovirt` shows **Connected** with 134 tools available.
+2. Open the Kiro Agent chat panel and try the following real-world virtualization workflows:
+
+##### Diagnostic Query:
+```text
+Verify our connection with ovirt_test_connection, then check overall CPU and memory utilization across all hypervisor hosts using ovirt_host_stats.
+```
+
+##### Troubleshooting Query:
+```text
+Find all VMs in cluster 'Default' that are in 'down' state, and check their recent events using ovirt_vm_events to see why they stopped.
+```
+
+##### Controlled Mutation (Safe Mode):
+```text
+Create a snapshot named 'pre-upgrade-backup' for VM 'db-prod-01'.
+```
+When `MCP_SAFE_MODE=true`, `ovirt-mcp` will require explicit confirmation (`confirm=true`), which Kiro's agent will highlight in the prompt interface before triggering the action on the hypervisor.
 
 ---
 
