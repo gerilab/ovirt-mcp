@@ -463,6 +463,10 @@ class VmLifecycleResult(BaseModel):
             "False if hard power-off was executed"
         ),
     )
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this action was simulated in dry_run mode without execution",
+    )
     message: str = Field(description="Human-readable summary of the operation and outcome")
 
 
@@ -489,6 +493,10 @@ class VmDeleteResult(BaseModel):
     disks_detached_only: bool = Field(
         description="Whether disks were preserved (detached) rather than wiped"
     )
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this action was simulated in dry_run mode without execution",
+    )
     message: str = Field(description="Human-readable outcome description")
 
 
@@ -506,6 +514,10 @@ class VmMigrateResult(BaseModel):
     )
     status: str = Field(
         description="VM power/migration status after action (e.g. 'migrating', 'up')"
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this action was simulated in dry_run mode without execution",
     )
     message: str = Field(description="Human-readable outcome description")
 
@@ -554,5 +566,9 @@ class VmSnapshotResult(BaseModel):
     restore_memory: bool = Field(
         default=False,
         description="Whether guest RAM state was restored / previewed online",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this action was simulated in dry_run mode without execution",
     )
     message: str = Field(description="Human-readable outcome description")

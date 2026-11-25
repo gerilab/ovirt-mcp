@@ -29,7 +29,11 @@ from ovirt_mcp.models.host import (
     HostUpgradeCheckResult,
     HostUpgradeResult,
 )
-from ovirt_mcp.tools.guards import audit_log, require_destructive_confirmation
+from ovirt_mcp.tools.guards import (
+    audit_log,
+    require_destructive_confirmation,
+    require_mutation_allowed,
+)
 
 logger = logging.getLogger("ovirt_mcp.tools.hosts")
 
@@ -448,6 +452,7 @@ def maintenance_host_tool(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 300,
+    dry_run: bool = False,
 ) -> HostLifecycleResult:
     """Put a hypervisor host into maintenance mode (deactivate).
 
@@ -465,13 +470,17 @@ def maintenance_host_tool(
         confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
         wait: If True, blocks until the host reaches 'maintenance' status and active VMs = 0.
         timeout_seconds: Maximum wait duration.
+        dry_run: If True, validates preconditions and simulates maintenance migration without deactivating the host.
 
     Returns:
         HostLifecycleResult with outcome details.
     """
-    require_destructive_confirmation(
-        f"put hypervisor host '{name_or_id}' into maintenance mode", confirmed=confirm
-    )
+    if not dry_run:
+        require_destructive_confirmation(
+            f"put hypervisor host '{name_or_id}' into maintenance mode", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("maintenance_host")
 
     client = get_client()
     conn = client.get_connection()
@@ -493,6 +502,7 @@ def maintenance_host_tool(
             previous_status=prev_status,
             current_status="maintenance",
             active_vms_count=0,
+            dry_run=dry_run,
             message=f"Host '{h_name}' is already in maintenance mode.",
         )
 
@@ -515,6 +525,36 @@ def maintenance_host_tool(
             "Host '%s' currently holds the Storage Pool Manager (SPM) role. Putting it into maintenance "
             "will trigger SPM role re-election and migration across the data center.",
             h_name,
+        )
+
+    active_count, _ = _get_active_vms_on_host(system_service, h_name, h_id)
+
+    if dry_run:
+        audit_log(
+            "maintenance_host",
+            h_name,
+            {"host_id": h_id, "dry_run": True, "active_vms": active_count},
+            "SUCCESS",
+        )
+        spm_note = (
+            " Host currently holds the Storage Pool Manager (SPM) role; role re-election would be triggered."
+            if is_spm
+            else ""
+        )
+        return HostLifecycleResult(
+            success=True,
+            action="maintenance",
+            host_id=h_id,
+            host_name=h_name,
+            previous_status=prev_status,
+            current_status=prev_status,
+            active_vms_count=active_count,
+            dry_run=True,
+            message=(
+                f"[DRY RUN] Host '{h_name}' is currently '{prev_status}'. "
+                f"Entering maintenance mode would live-migrate {active_count} active VM(s) away to other hosts in the cluster.{spm_note} "
+                "No changes were made."
+            ),
         )
 
     host_service = hosts_service.host_service(h_id)
@@ -582,6 +622,7 @@ def activate_host_tool(
     name_or_id: str,
     wait: bool = False,
     timeout_seconds: int = 180,
+    dry_run: bool = False,
 ) -> HostLifecycleResult:
     """Activate a hypervisor host from maintenance mode back to active 'up' status.
 
@@ -591,10 +632,13 @@ def activate_host_tool(
         name_or_id: Display name or UUID of the hypervisor host.
         wait: If True, blocks until the host reaches active 'up' status.
         timeout_seconds: Maximum wait duration.
+        dry_run: If True, simulates host activation without changing operational state.
 
     Returns:
         HostLifecycleResult with outcome details.
     """
+    require_mutation_allowed("activate_host")
+
     client = get_client()
     conn = client.get_connection()
     system_service = conn.system_service()
@@ -615,7 +659,22 @@ def activate_host_tool(
             previous_status=prev_status,
             current_status="up",
             active_vms_count=0,
+            dry_run=dry_run,
             message=f"Host '{h_name}' is already active ('up').",
+        )
+
+    if dry_run:
+        audit_log("activate_host", h_name, {"host_id": h_id, "dry_run": True}, "SUCCESS")
+        return HostLifecycleResult(
+            success=True,
+            action="activate",
+            host_id=h_id,
+            host_name=h_name,
+            previous_status=prev_status,
+            current_status=prev_status,
+            active_vms_count=0,
+            dry_run=True,
+            message=f"[DRY RUN] Host '{h_name}' is currently '{prev_status}'. Activating would bring it online ('up') to host workloads. No changes were made.",
         )
 
     host_service = hosts_service.host_service(h_id)
@@ -673,6 +732,7 @@ def restart_host_tool(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 300,
+    dry_run: bool = False,
 ) -> HostLifecycleResult:
     """Restart / reboot a hypervisor host via out-of-band power management fencing.
 
@@ -691,13 +751,17 @@ def restart_host_tool(
         confirm: Explicit confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
         wait: If True, blocks until the host finishes rebooting and returns to maintenance or up.
         timeout_seconds: Maximum wait duration.
+        dry_run: If True, validates enterprise safety gates and simulates reboot without executing fence action.
 
     Returns:
         HostLifecycleResult with outcome details.
     """
-    require_destructive_confirmation(
-        f"restart / reboot hypervisor host '{name_or_id}'", confirmed=confirm
-    )
+    if not dry_run:
+        require_destructive_confirmation(
+            f"restart / reboot hypervisor host '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("restart_host")
 
     client = get_client()
     conn = client.get_connection()
@@ -761,6 +825,28 @@ def restart_host_tool(
                 "power_management_enabled": False,
                 "hardware": f"{manuf} {prod}",
             },
+        )
+
+    hw_obj = getattr(host, "hardware_information", None)
+    manuf = getattr(hw_obj, "manufacturer", "Unknown")
+    prod = getattr(hw_obj, "product_name", "Unknown")
+
+    if dry_run:
+        audit_log("restart_host", h_name, {"host_id": h_id, "dry_run": True}, "SUCCESS")
+        return HostLifecycleResult(
+            success=True,
+            action="restart",
+            host_id=h_id,
+            host_name=h_name,
+            previous_status=prev_status,
+            current_status=prev_status,
+            active_vms_count=0,
+            dry_run=True,
+            message=(
+                f"[DRY RUN] Host '{h_name}' meets all enterprise safety criteria for restart "
+                f"(status: '{prev_status}', 0 active VMs, power management fencing verified: {manuf} {prod}). "
+                "Out-of-band fence reboot would be executed. No changes were made."
+            ),
         )
 
     host_service = hosts_service.host_service(h_id)

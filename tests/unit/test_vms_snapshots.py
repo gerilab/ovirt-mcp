@@ -123,6 +123,23 @@ def test_create_vm_snapshot_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "Pre-patching snapshot" in res.message
 
 
+def test_create_vm_snapshot_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """create_vm_snapshot with dry_run=True returns simulated snapshot without calling SDK add."""
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_vm_service, _ = _setup_mock_vm()
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        res = create_vm_snapshot_tool("test-vm", description="Pre-dry-run", dry_run=True)
+
+    assert res.success is True
+    assert res.dry_run is True
+    assert "[DRY RUN]" in res.message
+    mock_vm_service.snapshots_service().add.assert_not_called()
+
+
 # ── RESTORE SNAPSHOT TESTS ────────────────────────────────────────────────────
 
 

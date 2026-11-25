@@ -652,6 +652,51 @@ def test_list_host_storage_success() -> None:
     assert storage[0]["type"] == "nfs"
 
 
+def test_maintenance_host_dry_run_bypasses_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_host_service, _ = _setup_mock_host(status_str="up")
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = maintenance_host_tool("olvmhost002.example.com", confirm=False, dry_run=True)
+
+    mock_host_service.deactivate.assert_not_called()
+    assert res.success is True
+    assert res.dry_run is True
+    assert "[DRY RUN]" in res.message
+
+
+def test_activate_host_dry_run() -> None:
+    mock_client, mock_host_service, _ = _setup_mock_host(status_str="maintenance")
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = activate_host_tool("olvmhost002.example.com", dry_run=True)
+
+    mock_host_service.activate.assert_not_called()
+    assert res.success is True
+    assert res.dry_run is True
+    assert "[DRY RUN]" in res.message
+
+
+def test_restart_host_dry_run_bypasses_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_host_service, mock_host = _setup_mock_host(status_str="maintenance")
+    mock_host.power_management.enabled = True
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = restart_host_tool("olvmhost002.example.com", confirm=False, dry_run=True)
+
+    mock_host_service.fence.assert_not_called()
+    assert res.success is True
+    assert res.dry_run is True
+    assert "[DRY RUN]" in res.message
+
+
 def test_list_host_events_success() -> None:
     mock_client, _, _ = _setup_mock_host()
 

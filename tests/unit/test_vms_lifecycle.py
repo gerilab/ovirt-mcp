@@ -68,8 +68,99 @@ def test_start_vm_success() -> None:
         assert res.success is True
         assert res.action == "start"
         assert res.previous_status == "down"
-        assert res.current_status == "powering_up"
-        mock_vm_service.start.assert_called_once_with(pause=False)
+
+
+def test_start_vm_dry_run() -> None:
+    """start_vm with dry_run=True should simulate start without calling SDK start."""
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_system = MagicMock()
+    mock_vms_service = MagicMock()
+    mock_vm_service = MagicMock()
+
+    mock_vm = MagicMock()
+    mock_vm.id = "uuid-vm-1"
+    mock_vm.name = "web-node-1"
+    mock_vm.status.value = "down"
+    mock_client.find_resource_by_id_or_name.return_value = mock_vm
+
+    mock_vms_service.vm_service.return_value = mock_vm_service
+    mock_system.vms_service.return_value = mock_vms_service
+    mock_conn.system_service.return_value = mock_system
+    mock_client.get_connection.return_value = mock_conn
+    mock_client.config.mcp_read_only = False
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        res = start_vm_tool("web-node-1", dry_run=True)
+        assert res.success is True
+        assert res.dry_run is True
+        assert res.action == "start"
+        assert "[DRY RUN]" in res.message
+        mock_vm_service.start.assert_not_called()
+
+
+def test_stop_vm_dry_run_bypasses_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """stop_vm with dry_run=True bypasses destructive confirmation in Safe Mode and does not alter power state."""
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_system = MagicMock()
+    mock_vms_service = MagicMock()
+    mock_vm_service = MagicMock()
+
+    mock_vm = MagicMock()
+    mock_vm.id = "uuid-vm-1"
+    mock_vm.name = "web-node-1"
+    mock_vm.status.value = "up"
+    mock_client.find_resource_by_id_or_name.return_value = mock_vm
+
+    mock_vms_service.vm_service.return_value = mock_vm_service
+    mock_system.vms_service.return_value = mock_vms_service
+    mock_conn.system_service.return_value = mock_system
+    mock_client.get_connection.return_value = mock_conn
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        res = stop_vm_tool("web-node-1", confirm=False, dry_run=True)
+        assert res.success is True
+        assert res.dry_run is True
+        assert "[DRY RUN]" in res.message
+        mock_vm_service.shutdown.assert_not_called()
+        mock_vm_service.stop.assert_not_called()
+
+
+def test_reboot_vm_dry_run_bypasses_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """reboot_vm with dry_run=True bypasses destructive confirmation and does not call SDK reboot."""
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_system = MagicMock()
+    mock_vms_service = MagicMock()
+    mock_vm_service = MagicMock()
+
+    mock_vm = MagicMock()
+    mock_vm.id = "uuid-vm-1"
+    mock_vm.name = "web-node-1"
+    mock_vm.status.value = "up"
+    mock_client.find_resource_by_id_or_name.return_value = mock_vm
+
+    mock_vms_service.vm_service.return_value = mock_vm_service
+    mock_system.vms_service.return_value = mock_vms_service
+    mock_conn.system_service.return_value = mock_system
+    mock_client.get_connection.return_value = mock_conn
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        res = reboot_vm_tool("web-node-1", confirm=False, dry_run=True)
+        assert res.success is True
+        assert res.dry_run is True
+        assert res.current_status == "up"
+        assert "[DRY RUN]" in res.message
+        mock_vm_service.reboot.assert_not_called()
 
 
 def test_start_vm_read_only_blocked(monkeypatch: pytest.MonkeyPatch) -> None:

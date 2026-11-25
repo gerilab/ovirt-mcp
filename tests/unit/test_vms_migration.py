@@ -33,6 +33,43 @@ def test_migrate_vm_down_rejected() -> None:
         assert "actively running" in str(exc_info.value)
 
 
+def test_migrate_vm_dry_run() -> None:
+    """migrate_vm with dry_run=True returns migration simulation without calling SDK migrate."""
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_system = MagicMock()
+    mock_vms_service = MagicMock()
+    mock_vm_service = MagicMock()
+    mock_hosts_service = MagicMock()
+
+    mock_vm = MagicMock()
+    mock_vm.id = "vm-1"
+    mock_vm.name = "web-srv"
+    mock_vm.status.value = "up"
+    mock_vm.host.id = "host-1"
+    mock_vm.host.name = "node01"
+
+    mock_target_host = MagicMock()
+    mock_target_host.id = "host-2"
+    mock_target_host.name = "node02"
+
+    mock_vms_service.vm_service.return_value = mock_vm_service
+    mock_system.vms_service.return_value = mock_vms_service
+    mock_system.hosts_service.return_value = mock_hosts_service
+    mock_conn.system_service.return_value = mock_system
+    mock_client.get_connection.return_value = mock_conn
+    mock_client.find_resource_by_id_or_name.side_effect = [mock_vm, mock_target_host]
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        res = migrate_vm_tool("web-srv", target_host="node02", dry_run=True)
+        assert res.success is True
+        assert res.dry_run is True
+        assert res.source_host == "node01"
+        assert res.target_host == "node02"
+        assert "[DRY RUN]" in res.message
+        mock_vm_service.migrate.assert_not_called()
+
+
 def test_migrate_vm_success() -> None:
     """Migrating an UP VM invokes vm_service.migrate."""
     mock_client = MagicMock()

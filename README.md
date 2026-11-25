@@ -215,6 +215,7 @@ If you prefer keeping your entire setup inside your AI client configuration with
 | `OVIRT_CA_FILE` | path | `None` | Path to PEM CA certificate. If omitted, engine CA is downloaded automatically. |
 | `OVIRT_TIMEOUT` | int | `30` | Network request timeout in seconds. |
 | `OVIRT_MAX_RETRIES` | int | `3` | Connection retry count with exponential backoff. |
+| `OVIRT_AUDIT_LOG_FILE` | path | `None` | Optional path to an append-only JSON Lines file recording audit logs of all mutations. |
 | `MCP_SAFE_MODE` | bool | `true` | When `true`, destructive actions (stop, reboot, delete) require `confirm=True`. |
 | `MCP_READ_ONLY` | bool | `false` | When `true`, all state-modifying actions are strictly prohibited. |
 | `MCP_COMPACT_MODE`| bool | `false` | Default format for `ovirt_vm_get`: `true` for small LLMs, `false` for deep analysis. |
@@ -334,12 +335,27 @@ Different LLMs have different context window sizes and token costs. `ovirt-mcp` 
 - **Server-wide default:** Set `MCP_COMPACT_MODE=true` in `.env` to make all `ovirt_vm_get` calls lightweight by default.
 - **Per-query override:** The calling agent or user can pass `compact=True` or `compact=False` dynamically to any `ovirt_vm_get` call.
 
-### Safe Mode & Mutation Confirmation (Tier 3)
+### Safe Mode, Dry-Run Simulation & Mutation Confirmation (Tier 3)
 
 To prevent accidental hypervisor outages from hallucinatory or unintended agent actions:
 1. When `MCP_SAFE_MODE=true` (the default) and `MCP_READ_ONLY=false`, mutating operations strictly require an explicit `confirm=True` parameter.
 2. If `confirm=True` is omitted or set to `False`, the server raises `OvirtValidationError` with a detailed description of the pending mutation, prompting the human operator or supervisory agent to confirm.
 3. If `MCP_READ_ONLY=true` is set, the operation is blocked immediately with `OvirtPermissionError` (Tier 2), even if `confirm=True` is provided.
+
+#### Dry-Run Execution Simulation (`dry_run=True`)
+
+For operational and lifecycle tools, agents can pass `dry_run=True` to simulate and preview actions before executing them:
+- **Supported Tools:** `ovirt_vm_start`, `ovirt_vm_stop`, `ovirt_vm_shutdown`, `ovirt_vm_reboot`, `ovirt_vm_delete`, `ovirt_vm_migrate`, `ovirt_vm_snapshot_create`, `ovirt_host_maintenance`, `ovirt_host_activate`, `ovirt_host_restart`.
+- **Pre-flight Validation:** Verifies host states, cluster constraints, pinned VMs, IPMI fencing configuration, and power states.
+- **Bypasses Safe Mode Prompt:** Allows autonomous agents to preview projected outcomes without triggering destructive confirmation gates.
+- **Zero State Impact:** No changes are applied to the hypervisor cluster; returns `dry_run=True` with a detailed outcome description.
+
+#### Enterprise Audit Logging (`OVIRT_AUDIT_LOG_FILE`)
+
+Configure `OVIRT_AUDIT_LOG_FILE=/path/to/audit.jsonl` to record an immutable, append-only log of every mutation and dry-run simulation across all 17 resource domains:
+```json
+{"timestamp": "2026-11-25T16:20:00Z", "action": "stop_vm", "user": "admin@internal", "target": "prod-db-01", "status": "SUCCESS", "details": {"vm_id": "2a6c96b7-4da0-422f-8e7c-aa1fd5448144", "dry_run": true}}
+```
 
 ### Read-Only Enforcement (Tier 2)
 

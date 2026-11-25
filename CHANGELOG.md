@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] - 2026-11-25
+
+### Added
+- **`dry_run` Simulation Flag for Lifecycle & Operational Tools**:
+  - Added `dry_run: bool = False` parameter across 10 vital operational and lifecycle tools:
+    - Virtual machines: `ovirt_vm_start`, `ovirt_vm_stop`, `ovirt_vm_shutdown`, `ovirt_vm_reboot`, `ovirt_vm_delete`, `ovirt_vm_migrate`, `ovirt_vm_snapshot_create`.
+    - Hypervisor hosts: `ovirt_host_maintenance`, `ovirt_host_activate`, `ovirt_host_restart`.
+  - In simulation mode (`dry_run=True`), the server executes all authentication, entity resolution, validation checks, enterprise safety gates (e.g., zero VMs running, IPMI fencing verification, pinned VMs detection), and records the audit entry, but completely bypasses destructive Safe Mode confirmation requirements and makes zero state alterations on the oVirt / OLVM cluster.
+  - Returns structured results with `dry_run: bool = True` and clear human-readable preview messages detailing what changes would occur upon actual execution.
+- **Append-only Audit Log File (`OVIRT_AUDIT_LOG_FILE`)**:
+  - Added `OVIRT_AUDIT_LOG_FILE` environment variable / `config.ovirt_audit_log_file` setting.
+  - Automatically appends structured JSON Lines (`.jsonl`) audit records for every mutation and dry-run simulation across all 17 resource domains.
+  - Records include UTC timestamp (`timestamp`), operation name (`action`), acting credentials (`user`), target entity (`target`), execution outcome (`status`: `SUCCESS`, `FAILED`, `TIMEOUT`), and structured payload details (`details`).
+  - Ensures compliance with enterprise SOC2, ISO 27001, and change management auditing without external log shipping overhead.
+
 ## [0.8.5] - 2026-11-25
 
 ### Added

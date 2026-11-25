@@ -268,6 +268,10 @@ class HostLifecycleResult(BaseModel):
     previous_status: str = Field(description="Status of the host prior to the action")
     current_status: str = Field(description="Status of the host after initiation or completion")
     active_vms_count: int = Field(default=0, description="Virtual machines remaining on the host")
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this host operation was simulated in dry_run mode without execution",
+    )
     message: str = Field(description="Human-readable summary of outcome and safety checks")
 
 

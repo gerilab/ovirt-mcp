@@ -475,13 +475,14 @@ def ovirt_vm_events(
 
 @mcp.tool(
     name="ovirt_vm_start",
-    description="Start / power-on a virtual machine by name or UUID. Set wait=True to block until UP state.",
+    description="Start / power-on a virtual machine by name or UUID. Set wait=True to block until UP state. Set dry_run=True to simulate the operation without powering on the VM.",
 )
 def ovirt_vm_start(
     name_or_id: str,
     pause: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmLifecycleResult:
     """Power on a virtual machine."""
     return start_vm_tool(
@@ -489,6 +490,7 @@ def ovirt_vm_start(
         pause=pause,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -499,7 +501,8 @@ def ovirt_vm_start(
         "graceful=True (DEFAULT): Initiates a clean, orderly operating system shutdown inside the guest via guest tools (vtools / QEMU guest agent) and ACPI, allowing services to terminate cleanly and flush filesystem buffers. "
         "graceful=False: Immediate hard power-off (force kill, pulling the virtual plug). "
         "In Safe Mode (default), confirm=True is required. "
-        "Set wait=True to block until DOWN state."
+        "Set wait=True to block until DOWN state. "
+        "Set dry_run=True to preview the shutdown/stop without changing power state."
     ),
 )
 def ovirt_vm_stop(
@@ -509,6 +512,7 @@ def ovirt_vm_stop(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmLifecycleResult:
     """Shut down or power off a virtual machine."""
     return stop_vm_tool(
@@ -518,6 +522,7 @@ def ovirt_vm_stop(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -527,7 +532,8 @@ def ovirt_vm_stop(
         "Initiate a clean, graceful operating system shutdown of a virtual machine via guest tools (vtools / QEMU guest agent) and ACPI. "
         "This is the recommended, safest way to shut down running VMs. "
         "In Safe Mode (default), confirm=True is required. "
-        "Set wait=True to block until DOWN state."
+        "Set wait=True to block until DOWN state. "
+        "Set dry_run=True to preview the shutdown without changing power state."
     ),
 )
 def ovirt_vm_shutdown(
@@ -536,6 +542,7 @@ def ovirt_vm_shutdown(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmLifecycleResult:
     """Initiate a clean, graceful shutdown of a VM via guest agent/tools."""
     return stop_vm_tool(
@@ -545,6 +552,7 @@ def ovirt_vm_shutdown(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -552,7 +560,8 @@ def ovirt_vm_shutdown(
     name="ovirt_vm_reboot",
     description=(
         "Reboot a running virtual machine. In Safe Mode (default), confirm=True is required. "
-        "Set wait=True to block until VM completes restart and returns to UP state."
+        "Set wait=True to block until VM completes restart and returns to UP state. "
+        "Set dry_run=True to preview the reboot without resetting the VM."
     ),
 )
 def ovirt_vm_reboot(
@@ -561,6 +570,7 @@ def ovirt_vm_reboot(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmLifecycleResult:
     """Reboot a virtual machine."""
     return reboot_vm_tool(
@@ -569,6 +579,7 @@ def ovirt_vm_reboot(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -617,7 +628,8 @@ def ovirt_vm_create(
     description=(
         "Permanently delete a virtual machine in oVirt / OLVM. "
         "Safe Mode (default) requires confirm=True. "
-        "Set detach_only=True to keep disks; set force=True to force stop if running."
+        "Set detach_only=True to keep disks; set force=True to force stop if running. "
+        "Set dry_run=True to simulate deletion and validate state without deleting."
     ),
 )
 def ovirt_vm_delete(
@@ -627,6 +639,7 @@ def ovirt_vm_delete(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmDeleteResult:
     """Delete a virtual machine."""
     return delete_vm_tool(
@@ -636,6 +649,7 @@ def ovirt_vm_delete(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -643,7 +657,8 @@ def ovirt_vm_delete(
     name="ovirt_vm_migrate",
     description=(
         "Live-migrate a running virtual machine to another hypervisor host with zero downtime. "
-        "target_host is optional; if omitted, the engine automatically selects the optimal cluster host."
+        "target_host is optional; if omitted, the engine automatically selects the optimal cluster host. "
+        "Set dry_run=True to verify preconditions and simulate migration without moving the VM."
     ),
 )
 def ovirt_vm_migrate(
@@ -652,6 +667,7 @@ def ovirt_vm_migrate(
     force: bool = False,
     wait: bool = False,
     timeout_seconds: int = 120,
+    dry_run: bool = False,
 ) -> VmMigrateResult:
     """Migrate a running VM to another physical host."""
     return migrate_vm_tool(
@@ -660,6 +676,7 @@ def ovirt_vm_migrate(
         force=force,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -705,7 +722,8 @@ def ovirt_vm_snapshot_list(name_or_id: str) -> list[VmSnapshotInfo]:
         "Create a point-in-time snapshot of a virtual machine. "
         "Supports live snapshots for running VMs as well as offline snapshots. "
         "Optionally persist memory state (persist_memory=True, pauses execution while dumping RAM). "
-        "Set wait=True to block synchronously until the snapshot is unlocked and ready."
+        "Set wait=True to block synchronously until the snapshot is unlocked and ready. "
+        "Set dry_run=True to simulate snapshot creation without modifying disk state."
     ),
 )
 def ovirt_vm_snapshot_create(
@@ -714,6 +732,7 @@ def ovirt_vm_snapshot_create(
     persist_memory: bool = False,
     wait: bool = False,
     timeout_seconds: int = 180,
+    dry_run: bool = False,
 ) -> VmSnapshotResult:
     """Create a point-in-time snapshot of a VM."""
     return create_vm_snapshot_tool(
@@ -722,6 +741,7 @@ def ovirt_vm_snapshot_create(
         persist_memory=persist_memory,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -1328,7 +1348,8 @@ def ovirt_host_stats(name_or_id: str) -> HostStats:
         "Enterprise Pre-condition Guards: detects pinned non-migratable VMs and blocks unless stop_pinned_vms=True, "
         "and handles SPM role migration. "
         "Reversible counterpart: ovirt_host_activate. "
-        "In Safe Mode (default), confirm=True is required. Set wait=True to block until maintenance mode is achieved."
+        "In Safe Mode (default), confirm=True is required. Set wait=True to block until maintenance mode is achieved. "
+        "Set dry_run=True to simulate entering maintenance and preview live-migrating VMs."
     ),
 )
 def ovirt_host_maintenance(
@@ -1337,6 +1358,7 @@ def ovirt_host_maintenance(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 300,
+    dry_run: bool = False,
 ) -> HostLifecycleResult:
     """Place a hypervisor host into maintenance mode."""
     return maintenance_host_tool(
@@ -1345,6 +1367,7 @@ def ovirt_host_maintenance(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -1353,19 +1376,22 @@ def ovirt_host_maintenance(
     description=(
         "Activate a hypervisor host from maintenance mode back to active 'up' status. "
         "Reversible counterpart to ovirt_host_maintenance! "
-        "Set wait=True to block until host status reaches 'up'."
+        "Set wait=True to block until host status reaches 'up'. "
+        "Set dry_run=True to simulate host activation without changing operational state."
     ),
 )
 def ovirt_host_activate(
     name_or_id: str,
     wait: bool = False,
     timeout_seconds: int = 180,
+    dry_run: bool = False,
 ) -> HostLifecycleResult:
     """Activate a hypervisor host back to active 'up' status."""
     return activate_host_tool(
         name_or_id=name_or_id,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -1378,7 +1404,8 @@ def ovirt_host_activate(
         "2. Running VMs count MUST be exactly 0 (no running workloads). "
         "3. Verifies that power management (fencing/IPMI) is enabled; in nested virtualization or labs without IPMI, "
         "reports diagnostic error. "
-        "Destructive action: requires confirm=True in Safe Mode."
+        "Destructive action: requires confirm=True in Safe Mode. "
+        "Set dry_run=True to validate enterprise safety gates and preview reboot without executing fence action."
     ),
 )
 def ovirt_host_restart(
@@ -1386,6 +1413,7 @@ def ovirt_host_restart(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 300,
+    dry_run: bool = False,
 ) -> HostLifecycleResult:
     """Restart / reboot a hypervisor host via out-of-band power management."""
     return restart_host_tool(
@@ -1393,6 +1421,7 @@ def ovirt_host_restart(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 

@@ -1044,6 +1044,7 @@ def start_vm_tool(
     pause: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmLifecycleResult:
     """Start a virtual machine by name or UUID.
 
@@ -1052,6 +1053,7 @@ def start_vm_tool(
         pause: If True, boots VM into paused state.
         wait: If True, waits synchronously until VM reaches 'up' (or 'paused') state.
         timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, simulates the start operation and validates state without powering on.
 
     Returns:
         VmLifecycleResult with operation status and state.
@@ -1079,6 +1081,19 @@ def start_vm_tool(
             previous_status=prev_status,
             current_status=prev_status,
             message=f"VM '{vm_name}' is already up.",
+        )
+
+    if dry_run:
+        audit_log("start_vm", vm_name, {"vm_id": vm_id, "dry_run": True}, "SUCCESS")
+        return VmLifecycleResult(
+            success=True,
+            action="start",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=prev_status,
+            current_status=prev_status,
+            dry_run=True,
+            message=f"[DRY RUN] VM '{vm_name}' is currently '{prev_status}'. Starting would power on the VM (pause={pause}). No changes were made.",
         )
 
     try:
@@ -1151,6 +1166,7 @@ def stop_vm_tool(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmLifecycleResult:
     """Stop or shut down a virtual machine by name or UUID.
 
@@ -1163,14 +1179,18 @@ def stop_vm_tool(
         confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
         wait: If True, waits synchronously until VM reaches 'down' state.
         timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, simulates the stop/shutdown and returns projected outcome without changing power state.
 
     Returns:
         VmLifecycleResult with operation status, graceful flag, and state.
     """
     action_type = "shutdown" if graceful else "stop"
-    require_destructive_confirmation(
-        f"{action_type} VM '{name_or_id}' (force={force})", confirmed=confirm
-    )
+    if not dry_run:
+        require_destructive_confirmation(
+            f"{action_type} VM '{name_or_id}' (force={force})", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed(f"{action_type}_vm")
 
     client = get_client()
     conn = client.get_connection()
@@ -1194,6 +1214,24 @@ def stop_vm_tool(
             current_status=prev_status,
             graceful=graceful,
             message=f"VM '{vm_name}' is already down.",
+        )
+
+    if dry_run:
+        audit_log(f"{action_type}_vm", vm_name, {"vm_id": vm_id, "dry_run": True}, "SUCCESS")
+        return VmLifecycleResult(
+            success=True,
+            action=action_type,
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=prev_status,
+            current_status=prev_status,
+            graceful=graceful,
+            dry_run=True,
+            message=(
+                f"[DRY RUN] VM '{vm_name}' is currently '{prev_status}'. "
+                f"Action '{action_type}' would {'perform clean guest OS/ACPI shutdown' if graceful else 'immediately power off the VM'} "
+                f"(force={force}). No changes were made."
+            ),
         )
 
     # Pre-condition check: cannot gracefully shut down a VM that is still booting
@@ -1280,6 +1318,7 @@ def reboot_vm_tool(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmLifecycleResult:
     """Reboot a running virtual machine by name or UUID.
 
@@ -1289,11 +1328,17 @@ def reboot_vm_tool(
         confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
         wait: If True, waits synchronously until VM restarts and returns to 'up' status.
         timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, simulates reboot and verifies pre-conditions without resetting the VM.
 
     Returns:
         VmLifecycleResult with operation status and state.
     """
-    require_destructive_confirmation(f"reboot VM '{name_or_id}' (force={force})", confirmed=confirm)
+    if not dry_run:
+        require_destructive_confirmation(
+            f"reboot VM '{name_or_id}' (force={force})", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("reboot_vm")
 
     client = get_client()
     conn = client.get_connection()
@@ -1310,6 +1355,19 @@ def reboot_vm_tool(
         raise OvirtValidationError(
             f"Cannot reboot VM '{vm_name}' because it is currently down. Use ovirt_vm_start to boot it.",
             details={"vm_id": vm_id, "status": prev_status},
+        )
+
+    if dry_run:
+        audit_log("reboot_vm", vm_name, {"vm_id": vm_id, "dry_run": True}, "SUCCESS")
+        return VmLifecycleResult(
+            success=True,
+            action="reboot",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=prev_status,
+            current_status=prev_status,
+            dry_run=True,
+            message=f"[DRY RUN] VM '{vm_name}' is currently '{prev_status}'. Reboot would restart the virtual machine (force={force}). No changes were made.",
         )
 
     try:
@@ -1581,6 +1639,7 @@ def delete_vm_tool(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 60,
+    dry_run: bool = False,
 ) -> VmDeleteResult:
     """Delete a virtual machine in oVirt / OLVM.
 
@@ -1591,14 +1650,18 @@ def delete_vm_tool(
         confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
         wait: If True, waits synchronously until the VM is removed from inventory.
         timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, simulates deletion and validates state without removing the virtual machine.
 
     Returns:
         VmDeleteResult with details of deleted VM.
     """
-    require_destructive_confirmation(
-        f"delete VM '{name_or_id}' (detach_only={detach_only}, force={force})",
-        confirmed=confirm,
-    )
+    if not dry_run:
+        require_destructive_confirmation(
+            f"delete VM '{name_or_id}' (detach_only={detach_only}, force={force})",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("delete_vm")
 
     client = get_client()
     conn = client.get_connection()
@@ -1612,13 +1675,33 @@ def delete_vm_tool(
     curr_status = getattr(status_obj, "value", str(status_obj or "unknown")).lower()
 
     # If running, check force
-    if curr_status != "down":
-        if not force:
-            raise OvirtValidationError(
-                f"Cannot delete VM '{vm_name}' because its current status is '{curr_status}'. "
-                "Stop the virtual machine first, or supply force=True to automatically force stop and remove.",
-                details={"vm_id": vm_id, "status": curr_status},
-            )
+    if curr_status != "down" and not force:
+        raise OvirtValidationError(
+            f"Cannot delete VM '{vm_name}' because its current status is '{curr_status}'. "
+            "Stop the virtual machine first, or supply force=True to automatically force stop and remove.",
+            details={"vm_id": vm_id, "status": curr_status},
+        )
+
+    if dry_run:
+        audit_log(
+            "delete_vm",
+            vm_name,
+            {"vm_id": vm_id, "detach_only": detach_only, "force": force, "dry_run": True},
+            "SUCCESS",
+        )
+        disk_msg = (
+            "Attached virtual disks would be detached and preserved."
+            if detach_only
+            else "Attached virtual disks would be permanently deleted."
+        )
+        return VmDeleteResult(
+            success=True,
+            vm_id=vm_id,
+            vm_name=vm_name,
+            disks_detached_only=detach_only,
+            dry_run=True,
+            message=f"[DRY RUN] VM '{vm_name}' (status: '{curr_status}') would be removed. {disk_msg} No changes were made.",
+        )
         # Force stop before removal
         logger.info("Force-stopping VM '%s' before deletion...", vm_name)
         try:
@@ -1690,6 +1773,7 @@ def migrate_vm_tool(
     force: bool = False,
     wait: bool = False,
     timeout_seconds: int = 120,
+    dry_run: bool = False,
 ) -> VmMigrateResult:
     """Migrate a running virtual machine to another hypervisor host without downtime.
 
@@ -1699,6 +1783,7 @@ def migrate_vm_tool(
         force: If True, forces migration even if VM is configured as non-migratable.
         wait: If True, blocks synchronously until migration is complete.
         timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, verifies preconditions and simulates migration without moving the virtual machine.
 
     Returns:
         VmMigrateResult with source/target hosts and outcome.
@@ -1748,6 +1833,34 @@ def migrate_vm_tool(
                 f"VM '{vm_name}' is already running on target host '{target_host_name}'.",
                 details={"vm_id": vm_id, "host": target_host_name},
             )
+
+    if dry_run:
+        audit_log(
+            "migrate_vm",
+            vm_name,
+            {
+                "vm_id": vm_id,
+                "source_host": source_host_name,
+                "target_host": target_host_name,
+                "dry_run": True,
+            },
+            "SUCCESS",
+        )
+        dest_str = (
+            f"to host '{target_host_name}'"
+            if target_host_name
+            else "to an optimal host in the cluster"
+        )
+        return VmMigrateResult(
+            success=True,
+            vm_id=vm_id,
+            vm_name=vm_name,
+            source_host=source_host_name,
+            target_host=target_host_name,
+            status=curr_status,
+            dry_run=True,
+            message=f"[DRY RUN] VM '{vm_name}' is currently running on '{source_host_name}'. Live migration {dest_str} would be initiated (force={force}). No changes were made.",
+        )
 
     host_spec = sdk_types.Host(id=str(target_host_obj.id)) if target_host_obj else None
 
@@ -1979,6 +2092,7 @@ def create_vm_snapshot_tool(
     persist_memory: bool = False,
     wait: bool = False,
     timeout_seconds: int = 180,
+    dry_run: bool = False,
 ) -> VmSnapshotResult:
     """Create a new point-in-time snapshot of a virtual machine.
 
@@ -1988,6 +2102,7 @@ def create_vm_snapshot_tool(
         persist_memory: If True, saves running RAM state along with disk state.
         wait: If True, blocks synchronously until snapshot creation completes and reaches 'ok' status.
         timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, simulates snapshot creation without altering VM disks or memory.
 
     Returns:
         VmSnapshotResult with snapshot ID and outcome.
@@ -2001,6 +2116,24 @@ def create_vm_snapshot_tool(
     vm_id = str(vm.id)
     vm_name = str(vm.name)
     vm_service = vms_service.vm_service(vm_id)
+
+    if dry_run:
+        audit_log(
+            "create_vm_snapshot",
+            vm_name,
+            {"vm_id": vm_id, "description": description, "dry_run": True},
+            "SUCCESS",
+        )
+        return VmSnapshotResult(
+            success=True,
+            action="create",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            snapshot_id="dry-run-preview-id",
+            description=description,
+            dry_run=True,
+            message=f"[DRY RUN] Snapshot '{description}' (persist_memory={persist_memory}) for VM '{vm_name}' would be created. No changes were made.",
+        )
 
     snapshot_spec = sdk_types.Snapshot(
         description=description,

@@ -35,6 +35,37 @@ def test_delete_vm_read_only_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "read-only mode" in str(exc_info.value)
 
 
+def test_delete_vm_dry_run_bypasses_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """delete_vm with dry_run=True bypasses confirmation and simulates VM deletion without calling SDK remove."""
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_system = MagicMock()
+    mock_vms_service = MagicMock()
+    mock_vm_service = MagicMock()
+
+    mock_vm = MagicMock()
+    mock_vm.id = "vm-1"
+    mock_vm.name = "prod-vm"
+    mock_vm.status.value = "down"
+
+    mock_vms_service.vm_service.return_value = mock_vm_service
+    mock_system.vms_service.return_value = mock_vms_service
+    mock_conn.system_service.return_value = mock_system
+    mock_client.get_connection.return_value = mock_conn
+    mock_client.find_resource_by_id_or_name.return_value = mock_vm
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        res = delete_vm_tool("prod-vm", confirm=False, dry_run=True)
+        assert res.success is True
+        assert res.dry_run is True
+        assert "[DRY RUN]" in res.message
+        mock_vm_service.remove.assert_not_called()
+
+
 def test_delete_vm_running_without_force(monkeypatch: pytest.MonkeyPatch) -> None:
     """Attempting to delete a running VM without force=True must raise OvirtValidationError."""
     monkeypatch.setattr(

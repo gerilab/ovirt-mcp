@@ -67,6 +67,10 @@ class OvirtConfig(BaseSettings):
         default=True,
         description="Enable safe mode (requires explicit confirmation flags for destructive operations)",
     )
+    ovirt_audit_log_file: Path | None = Field(
+        default=None,
+        description="Path to append-only JSON Lines audit log file recording all AI agent mutations",
+    )
     mcp_transport: str = Field(
         default="stdio",
         description="Transport protocol for MCP communications: 'stdio', 'sse', or 'streamable-http'",

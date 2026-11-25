@@ -1,6 +1,9 @@
 """Security guards and operation safety validators for enterprise MCP."""
 
+import json
 import logging
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from ovirt_mcp.client.exceptions import OvirtPermissionError, OvirtValidationError
@@ -56,3 +59,23 @@ def audit_log(action_name: str, target: str, details: dict[str, Any], status: st
         status,
         details,
     )
+    if config.ovirt_audit_log_file:
+        try:
+            log_path = Path(config.ovirt_audit_log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "action": action_name,
+                "user": config.ovirt_username,
+                "target": target,
+                "status": status,
+                "details": details,
+            }
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, default=str) + "\n")
+        except Exception as exc:
+            logger.warning(
+                "Failed to write audit log record to '%s': %s",
+                config.ovirt_audit_log_file,
+                exc,
+            )
