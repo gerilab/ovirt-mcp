@@ -37,6 +37,7 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
    - [Method 6: Kiro IDE on Remote Linux (via SSH)](#method-6-kiro-ide-on-remote-linux-via-ssh)
 8. [Testing & Quality Verification](#testing--quality-verification)
 9. [Troubleshooting & FAQ](#troubleshooting--faq)
+10. [Version History & Changelog](CHANGELOG.md)
 
 ---
 
@@ -1085,6 +1086,12 @@ mypy src tests
 ### 5. `Operation requires confirmation in Safe Mode`
 - **Cause:** Destructive actions (like shutting down a VM) require confirmation.
 - **Solution:** Supply `confirm=True` as a tool argument.
+
+---
+
+## Version History & Changelog
+
+For detailed release notes, migration guides, and historical changes across releases, see the complete [CHANGELOG.md](CHANGELOG.md) and the [GitHub Releases](https://github.com/gerilab/ovirt-mcp/releases) page.
 
 ---
 
