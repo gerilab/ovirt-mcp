@@ -15,6 +15,7 @@ from ovirt_mcp.models.host import (
     HostEvent,
     HostLifecycleResult,
     HostNicInfo,
+    HostNicLldpInfo,
     HostNumaNodeInfo,
     HostStats,
     HostSummary,
@@ -64,7 +65,11 @@ def _setup_mock_host(
     mock_cluster.id = "cluster-uuid-1"
     mock_host.cluster = mock_cluster
     mock_host.address = "192.0.2.12"
+    mock_host.port = 54321
     mock_host.update_available = True
+    mock_iscsi = MagicMock()
+    mock_iscsi.initiator = "iqn.1994-05.com.redhat:42a1b9c0"
+    mock_host.iscsi = mock_iscsi
 
     hw_info = MagicMock()
     hw_info.manufacturer = "VMware, Inc." if is_vmware else "Dell Inc."
@@ -127,6 +132,7 @@ def test_list_hosts_success() -> None:
     assert h.total_memory_gb == 32.0
     assert h.active_vms_count == 0
     assert h.update_available is True
+    assert h.iscsi_initiator_name == "iqn.1994-05.com.redhat:42a1b9c0"
 
 
 def test_get_host_detail_success() -> None:
@@ -145,6 +151,8 @@ def test_get_host_detail_success() -> None:
     assert detail.hardware.manufacturer == "VMware, Inc."
     assert detail.power_management.enabled is False
     assert detail.update_available is True
+    assert detail.iscsi_initiator_name == "iqn.1994-05.com.redhat:42a1b9c0"
+    assert detail.vdsm_port == 54321
 
 
 # ── HOST STATS TESTS ──────────────────────────────────────────────────────────
@@ -503,6 +511,79 @@ def test_list_host_nics_success() -> None:
     assert n.speed_mbps == 10000
     assert n.mac_address == "00:50:56:91:69:08"
     assert "192.0.2.12" in n.ip_addresses
+
+
+def test_list_host_nics_with_lldp_success() -> None:
+    mock_client, mock_host_service, _ = _setup_mock_host()
+
+    mock_nic = MagicMock()
+    mock_nic.id = "nic-1"
+    mock_nic.name = "eth0"
+    mock_nic.mac.address = "00:50:56:91:69:08"
+    mock_nic.speed = 10000000000
+    mock_nic.status.value = "up"
+    mock_nic.network = None
+    mock_nic.bridged = False
+    mock_nic.ip = None
+    mock_nic.ips = []
+    mock_nic.bonding = None
+
+    # LLDP elements
+    def make_lldp_elem(name: str, elem_type: int, props: dict[str, str]) -> MagicMock:
+        el = MagicMock()
+        el.name = name
+        el.type = elem_type
+        el.oui = 0
+        el.subtype = 1
+        prop_objs = []
+        for k, v in props.items():
+            p = MagicMock()
+            p.name = k
+            p.value = v
+            prop_objs.append(p)
+        el.properties = prop_objs
+        return el
+
+    elem_chassis = make_lldp_elem("Chassis ID", 1, {"chassis_id": "00:11:22:33:44:55"})
+    elem_port = make_lldp_elem("Port ID", 2, {"port_id": "GigabitEthernet1/0/24"})
+    elem_port_desc = make_lldp_elem("Port Description", 4, {"description": "Access switch port"})
+    elem_sys_name = make_lldp_elem("System Name", 5, {"system_name": "sw-access-01.example.com"})
+    elem_sys_desc = make_lldp_elem(
+        "System Description", 6, {"description": "Enterprise Core Switch 48-Port"}
+    )
+    elem_mgmt_addr = make_lldp_elem("Management Address", 8, {"address": "10.0.0.254"})
+
+    mock_nic_service = MagicMock()
+    mock_lldp_service = MagicMock()
+    mock_lldp_service.list.return_value = [
+        elem_chassis,
+        elem_port,
+        elem_port_desc,
+        elem_sys_name,
+        elem_sys_desc,
+        elem_mgmt_addr,
+    ]
+    mock_nic_service.link_layer_discovery_protocol_elements_service.return_value = mock_lldp_service
+
+    mock_nics_service = MagicMock()
+    mock_nics_service.list.return_value = [mock_nic]
+    mock_nics_service.nic_service.return_value = mock_nic_service
+    mock_host_service.nics_service.return_value = mock_nics_service
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        nics = list_host_nics_tool("olvmhost002.example.com", include_lldp=True)
+
+    assert len(nics) == 1
+    n = nics[0]
+    assert n.lldp is not None
+    assert isinstance(n.lldp, HostNicLldpInfo)
+    assert n.lldp.chassis_id == "00:11:22:33:44:55"
+    assert n.lldp.port_id == "GigabitEthernet1/0/24"
+    assert n.lldp.port_description == "Access switch port"
+    assert n.lldp.system_name == "sw-access-01.example.com"
+    assert n.lldp.system_description == "Enterprise Core Switch 48-Port"
+    assert n.lldp.management_address == "10.0.0.254"
+    assert len(n.lldp.elements) == 6
 
 
 def test_list_host_numa_success() -> None:

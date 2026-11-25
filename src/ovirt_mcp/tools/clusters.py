@@ -3,8 +3,10 @@
 import logging
 from typing import Any
 
+from ovirtsdk4 import types as sdk_types
+
 from ovirt_mcp.client import get_client
-from ovirt_mcp.client.exceptions import OvirtValidationError
+from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtValidationError
 from ovirt_mcp.models.cluster import (
     ClusterDetail,
     ClusterFencingPolicy,
@@ -409,3 +411,207 @@ def get_cluster_tool(name_or_id: str) -> ClusterDetail:
         pass
 
     return _extract_cluster_detail(cluster, dc_names)
+
+
+def _parse_inheritable_bool(val: str | bool | None) -> sdk_types.InheritableBoolean | None:
+    if val is None:
+        return None
+    s = str(val).lower().strip()
+    if s in ("true", "yes", "1"):
+        return sdk_types.InheritableBoolean.TRUE
+    elif s in ("false", "no", "0"):
+        return sdk_types.InheritableBoolean.FALSE
+    elif s in ("inherit", "default"):
+        return sdk_types.InheritableBoolean.INHERIT
+    return None
+
+
+def _parse_bandwidth_method(val: str | None) -> sdk_types.MigrationBandwidthAssignmentMethod | None:
+    if not val:
+        return None
+    mapping = {
+        "auto": sdk_types.MigrationBandwidthAssignmentMethod.AUTO,
+        "custom": sdk_types.MigrationBandwidthAssignmentMethod.CUSTOM,
+        "hypervisor_default": sdk_types.MigrationBandwidthAssignmentMethod.HYPERVISOR_DEFAULT,
+        "default": sdk_types.MigrationBandwidthAssignmentMethod.HYPERVISOR_DEFAULT,
+    }
+    return mapping.get(val.lower().strip())
+
+
+def _parse_parallel_policy(val: str | None) -> sdk_types.ParallelMigrationsPolicy | None:
+    if not val:
+        return None
+    mapping = {
+        "auto": sdk_types.ParallelMigrationsPolicy.AUTO,
+        "auto_parallel": sdk_types.ParallelMigrationsPolicy.AUTO_PARALLEL,
+        "custom": sdk_types.ParallelMigrationsPolicy.CUSTOM,
+        "disabled": sdk_types.ParallelMigrationsPolicy.DISABLED,
+        "inherit": sdk_types.ParallelMigrationsPolicy.INHERIT,
+    }
+    return mapping.get(val.lower().strip())
+
+
+def _parse_firewall_type(val: str | None) -> sdk_types.FirewallType | None:
+    if not val:
+        return None
+    mapping = {
+        "firewalld": sdk_types.FirewallType.FIREWALLD,
+        "iptables": sdk_types.FirewallType.IPTABLES,
+    }
+    return mapping.get(val.lower().strip())
+
+
+def update_cluster_tool(
+    name_or_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    migration_auto_converge: str | None = None,
+    migration_compressed: str | None = None,
+    migration_encrypted: str | None = None,
+    migration_bandwidth_method: str | None = None,
+    migration_bandwidth_custom_value: int | None = None,
+    migration_parallel_policy: str | None = None,
+    migration_custom_parallel: int | None = None,
+    migration_policy_id: str | None = None,
+    scheduling_policy_id: str | None = None,
+    scheduling_policy_name: str | None = None,
+    fencing_enabled: bool | None = None,
+    skip_fencing_if_connectivity_broken: bool | None = None,
+    skip_fencing_if_sd_active: bool | None = None,
+    firewall_type: str | None = None,
+) -> ClusterDetail:
+    """Update settings, live migration policies, scheduling policies, fencing, and metadata for a cluster.
+
+    Args:
+        name_or_id: Cluster display name or UUID.
+        name: Optional new cluster display name.
+        description: Optional cluster description text.
+        comment: Optional administrative comment.
+        migration_auto_converge: VM live migration auto-converge ('true', 'false', 'inherit').
+        migration_compressed: VM live migration compression ('true', 'false', 'inherit').
+        migration_encrypted: VM live migration encryption ('true', 'false', 'inherit').
+        migration_bandwidth_method: Bandwidth limit mode ('auto', 'hypervisor_default', 'custom').
+        migration_bandwidth_custom_value: Custom bandwidth limit in Mbps when bandwidth method is custom.
+        migration_parallel_policy: Parallel migration policy ('auto', 'auto_parallel', 'custom', 'disabled', 'inherit').
+        migration_custom_parallel: Maximum parallel outgoing/incoming live migrations per host.
+        migration_policy_id: UUID of migration convergence policy (e.g. Minimal downtime, Post-copy).
+        scheduling_policy_id: UUID of workload placement scheduling policy.
+        scheduling_policy_name: Name of scheduling policy (e.g. 'evenly_distributed', 'power_saving').
+        fencing_enabled: Whether host IPMI/power fencing is enabled for the cluster.
+        skip_fencing_if_connectivity_broken: Skip fencing if connectivity is broken.
+        skip_fencing_if_sd_active: Skip fencing if storage domain is active.
+        firewall_type: Host firewall manager type ('firewalld', 'iptables').
+
+    Returns:
+        Updated ClusterDetail object.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    sys_service = conn.system_service()
+    clusters_service = sys_service.clusters_service()
+
+    cluster = client.find_resource_by_id_or_name(clusters_service, name_or_id, "cluster")
+    if not cluster:
+        raise OvirtValidationError(f"Cluster '{name_or_id}' not found.")
+
+    c_id = str(cluster.id)
+
+    # Resolve scheduling policy name if provided
+    if scheduling_policy_name and not scheduling_policy_id:
+        try:
+            sched_policies = sys_service.scheduling_policies_service().list()
+            matched_sp = next(
+                (
+                    p
+                    for p in sched_policies
+                    if str(getattr(p, "name", "")).lower() == scheduling_policy_name.lower()
+                ),
+                None,
+            )
+            if matched_sp and getattr(matched_sp, "id", None):
+                scheduling_policy_id = str(matched_sp.id)
+            else:
+                raise OvirtValidationError(
+                    f"Scheduling policy '{scheduling_policy_name}' not found."
+                )
+        except Exception as sp_exc:
+            if isinstance(sp_exc, OvirtValidationError):
+                raise
+            logger.debug("Failed querying scheduling policies: %s", sp_exc)
+
+    cluster_kwargs: dict[str, Any] = {}
+    if name is not None:
+        cluster_kwargs["name"] = name
+    if description is not None:
+        cluster_kwargs["description"] = description
+    if comment is not None:
+        cluster_kwargs["comment"] = comment
+
+    # Migration options
+    migration_kwargs: dict[str, Any] = {}
+    if migration_auto_converge is not None:
+        migration_kwargs["auto_converge"] = _parse_inheritable_bool(migration_auto_converge)
+    if migration_compressed is not None:
+        migration_kwargs["compressed"] = _parse_inheritable_bool(migration_compressed)
+    if migration_encrypted is not None:
+        migration_kwargs["encrypted"] = _parse_inheritable_bool(migration_encrypted)
+
+    bandwidth_kwargs: dict[str, Any] = {}
+    if migration_bandwidth_method is not None:
+        bandwidth_kwargs["assignment_method"] = _parse_bandwidth_method(migration_bandwidth_method)
+    if migration_bandwidth_custom_value is not None:
+        bandwidth_kwargs["custom_value"] = int(migration_bandwidth_custom_value)
+    if bandwidth_kwargs:
+        migration_kwargs["bandwidth"] = sdk_types.MigrationBandwidth(**bandwidth_kwargs)
+
+    if migration_parallel_policy is not None:
+        migration_kwargs["parallel_migrations_policy"] = _parse_parallel_policy(
+            migration_parallel_policy
+        )
+    if migration_custom_parallel is not None:
+        migration_kwargs["custom_parallel_migrations"] = int(migration_custom_parallel)
+    if migration_policy_id is not None:
+        migration_kwargs["policy"] = sdk_types.MigrationPolicy(id=migration_policy_id)
+
+    if migration_kwargs:
+        cluster_kwargs["migration"] = sdk_types.MigrationOptions(**migration_kwargs)
+
+    # Scheduling policy
+    if scheduling_policy_id is not None:
+        cluster_kwargs["scheduling_policy"] = sdk_types.SchedulingPolicy(id=scheduling_policy_id)
+
+    # Fencing policy
+    fencing_kwargs: dict[str, Any] = {}
+    if fencing_enabled is not None:
+        fencing_kwargs["enabled"] = bool(fencing_enabled)
+    if skip_fencing_if_connectivity_broken is not None:
+        fencing_kwargs["skip_if_connectivity_broken"] = sdk_types.SkipIfConnectivityBroken(
+            enabled=bool(skip_fencing_if_connectivity_broken)
+        )
+    if skip_fencing_if_sd_active is not None:
+        fencing_kwargs["skip_if_sd_active"] = sdk_types.SkipIfSdActive(
+            enabled=bool(skip_fencing_if_sd_active)
+        )
+    if fencing_kwargs:
+        cluster_kwargs["fencing_policy"] = sdk_types.FencingPolicy(**fencing_kwargs)
+
+    # Firewall type
+    if firewall_type is not None:
+        cluster_kwargs["firewall_type"] = _parse_firewall_type(firewall_type)
+
+    if not cluster_kwargs:
+        raise OvirtValidationError("At least one cluster attribute must be specified for update.")
+
+    c_service = clusters_service.cluster_service(c_id)
+    update_obj = sdk_types.Cluster(**cluster_kwargs)
+
+    try:
+        c_service.update(update_obj)
+    except Exception as exc:
+        raise OvirtMCPError(
+            f"Failed to update cluster '{name_or_id}': {exc}",
+            details={"cluster_id": c_id, "error": str(exc)},
+        ) from exc
+
+    return get_cluster_tool(c_id)

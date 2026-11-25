@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2026-11-25
+
+### Added
+- **Cluster Settings & Policy Management (`ovirt_cluster_update`)**:
+  - Added new tool #89 (`ovirt_cluster_update`) to modify cluster configuration, VM live migration convergence policies, scheduling placement algorithms, and fencing rules.
+  - Operational settings (live migration auto-converge, data encryption, compression, custom bandwidth limits, parallel migrations, workload scheduling policies, threshold parameters, fencing safety bypass, and administrator comments) are applied dynamically online without requiring cluster or hypervisor maintenance mode.
+- **Host iSCSI Initiator Name / IQN (`ovirt_host_get`, `ovirt_host_list`)**:
+  - Exposed `iscsi_initiator_name` (Host IQN, e.g. `iqn.1994-05.com.redhat:...`) in `HostDetail` and `HostSummary` for SAN/iSCSI storage discovery and mapping.
+  - Exposed `vdsm_port` in `HostDetail` (VDSM management daemon port, default 54321).
+- **Physical Interface LLDP Neighbor & Switch Port Discovery (`ovirt_host_nic_list`)**:
+  - Added `include_lldp` parameter to `ovirt_host_nic_list` (enabled by default) querying Link Layer Discovery Protocol (LLDP) elements received on host network interfaces.
+  - Decoded structured LLDP neighbor telemetry in `HostNicInfo` (`lldp` field):
+    - `port_id`: Identifies the exact physical switch port connected to the hypervisor NIC (e.g. `GigabitEthernet1/0/24`, `1/1/2`).
+    - `chassis_id`: Connected switch chassis MAC address / identifier.
+    - `port_description`: Configured port description on switch.
+    - `system_name`: Connected switch system / hostname.
+    - `system_description`: Switch hardware vendor, model, and OS firmware version.
+    - `management_address`: Switch management IP address.
+    - `elements`: Exhaustive list of raw/decoded TLVs (`HostNicLldpElement`).
+
+### Documentation & Tool Reference
+- **Expanded Catalog to 137 Tools**: Updated `TOOLS.md` and `README.md` reflecting the new `ovirt_cluster_update` tool, updated host IQN and LLDP port parameters, and revised resource domain tool counts.
+
 ## [0.8.4] - 2026-11-25
 
 ### Added

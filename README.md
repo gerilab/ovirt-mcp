@@ -371,7 +371,7 @@ ovirt_<domain>_[<subresource>_]<action>
 
 ## Tool Catalog & Overview
 
-The server exposes **136 production-grade tools** structured into 17 logical resource domains, strictly adhering to the `ovirt_<domain>_[<subresource>_]<action>` naming pattern.
+The server exposes **137 production-grade tools** structured into 17 logical resource domains, strictly adhering to the `ovirt_<domain>_[<subresource>_]<action>` naming pattern.
 
 > 📘 **Exhaustive Documentation:** For the complete, parameter-by-parameter reference catalog, input/output schemas, safe mode constraints, and JSON response examples for every tool, see **[TOOLS.md](TOOLS.md)**.
 
@@ -387,7 +387,7 @@ The server exposes **136 production-grade tools** structured into 17 logical res
 | 6 | **Host Networking & SAN** | `ovirt_host_network_*`, `ovirt_host_iscsi_*`, `ovirt_host_bond_*` | 6 | Host network attachments, network sync, iSCSI portal discovery and login, and bond interface configuration | [TOOLS.md#6](TOOLS.md#68-ovirt_host_network_attachment_list) |
 | 7 | **Storage Domains** | `ovirt_storage_domain_*` | 8 | Storage domain inventory, NFS creation, activation, maintenance, detaching, deletion, space health, overcommitment ratios, domain IOPS, and workload mapping | [TOOLS.md#7](TOOLS.md#72-ovirt_storage_domain_list) |
 | 8 | **Templates & Appliances** | `ovirt_template_*`, `ovirt_vm_export`, `ovirt_vm_import`, `ovirt_disk_export` | 7 | VM template creation from VMs, template deletion, OVA appliance export/import, and disk export | [TOOLS.md#8](TOOLS.md#80-ovirt_template_list) |
-| 9 | **Clusters & Data Centers** | `ovirt_cluster_*`, `ovirt_datacenter_*` | 4 | Cluster inventory and configuration (CPU types, compatibility versions, memory overcommit, FIPS, BIOS type), and Data Center management | [TOOLS.md#9](TOOLS.md#87-ovirt_cluster_list) |
+| 9 | **Clusters & Data Centers** | `ovirt_cluster_*`, `ovirt_datacenter_*` | 5 | Cluster inventory and configuration (CPU types, compatibility versions, memory overcommit, FIPS, BIOS type, live migration & scheduling policies), and Data Center management | [TOOLS.md#9](TOOLS.md#87-ovirt_cluster_list) |
 | 10 | **Resource Quotas** | `ovirt_quota_*` | 4 | Cluster vCPU/RAM limits, storage domain gigabyte limits, and quota lifecycle enforcement | [TOOLS.md#10](TOOLS.md#91-ovirt_quota_list) |
 | 11 | **Logical Networks & vNICs** | `ovirt_network_*`, `ovirt_network_profile_*` | 5 | Logical network management (VLAN tagging, MTU, VM network assignment) and vNIC profile listing | [TOOLS.md#11](TOOLS.md#95-ovirt_network_list) |
 | 12 | **Resource Tags** | `ovirt_tag_*`, `ovirt_*_tag_*` | 9 | Tag hierarchy management, assigning and unassigning tags across VMs, hosts, and users | [TOOLS.md#12](TOOLS.md#99-ovirt_tag_list) |
@@ -396,13 +396,24 @@ The server exposes **136 production-grade tools** structured into 17 logical res
 | 15 | **Virtual Machine Pools** | `ovirt_vm_pool_*` | 6 | Stateful & stateless VDI desktop pools, pool creation, parameter updates, allocation, and deletion | [TOOLS.md#15](TOOLS.md#122-ovirt_vm_pool_list) |
 | 16 | **Backup & Incremental CBT** | `ovirt_vm_checkpoint_*`, `ovirt_vm_backup_*` | 7 | Changed Block Tracking (CBT) checkpoint management, live backup sessions, scratch disk overlays, and backup finalization | [TOOLS.md#16](TOOLS.md#128-ovirt_vm_checkpoint_list) |
 | 17 | **Asynchronous Jobs & Progress** | `ovirt_job_*` | 2 | Real-time monitoring of asynchronous engine operations, execution sub-steps, progress percentages (0-100%), and execution host mapping | [TOOLS.md#17](TOOLS.md#135-ovirt_job_list) |
-| **Total** | | | **136** | **Full-Stack Enterprise Virtualization Operations** | **[Complete Catalog](TOOLS.md)** |
+| **Total** | | | **137** | **Full-Stack Enterprise Virtualization Operations** | **[Complete Catalog](TOOLS.md)** |
 
 ---
 
 ### Enterprise Telemetry & Observability Highlights
 
+- **Dynamic Online Cluster Policy Management (`ovirt_cluster_get`, `ovirt_cluster_update`):**
+  Inspect and tune cluster-wide VM live migration policies (auto-converge, data encryption, parallel migration limits, custom bandwidth), workload placement scheduling algorithms, and fencing safety rules online dynamically without hypervisor maintenance mode.
+- **Host Hardware Telemetry & Switch Port Discovery (`ovirt_host_get`, `ovirt_host_nic_list`):**
+  Inspect hypervisor host iSCSI Initiator IQNs, management daemon ports (VDSM), and decode LLDP neighbor telemetry exposing physical switch ports (`port_id`, e.g. `"GigabitEthernet1/0/24"`), switch chassis MACs, and switch hostnames.
 - **Real-Time Per-Disk I/O Telemetry (`ovirt_vm_get`, `ovirt_disk_list`):**
+  Inspect instantaneous read/write throughput in bytes/second, read/write IOPS, and hypervisor-reported latency for each attached virtual disk.
+- **Storage Domain Overcommitment & Capacity Health (`ovirt_storage_domain_get`):**
+  Evaluate thin-provisioning risk with computed `overcommit_ratio`, `space_health` indicators (`healthy`, `warning`, `critical`, `overcommitted`), domain-wide aggregated IOPS, and top I/O active disks.
+- **Asynchronous Engine Task Tracking (`ovirt_job_list`, `ovirt_job_get`):**
+  Monitor long-running operations (live VM migrations, disk moves, snapshot consolidations) without blocking the AI agent, with step-level status, progress percentages, and host mapping.
+- **Audit Correlation & Tracing (`ovirt_system_events`):**
+  Correlate operational events directly with engine resource UUIDs (`vm_id`, `host_id`, `cluster_id`, `storage_domain_id`), bridging audit trail diagnostics with live telemetry inspection.
   Inspect instantaneous read/write throughput in bytes/second, read/write IOPS, and hypervisor-reported latency for each attached virtual disk.
 - **Storage Domain Overcommitment & Capacity Health (`ovirt_storage_domain_get`):**
   Evaluate thin-provisioning risk with computed `overcommit_ratio`, `space_health` indicators (`healthy`, `warning`, `critical`, `overcommitted`), domain-wide aggregated IOPS, and top I/O active disks.
@@ -467,7 +478,7 @@ Add the `ovirt` server configuration (using either `ghcr.io/gerilab/ovirt-mcp:la
   }
 }
 ```
-Restart Claude Desktop. The hammer icon will show all 136 oVirt tools loaded!
+Restart Claude Desktop. The hammer icon will show all 137 oVirt tools loaded!
 
 ---
 
@@ -914,7 +925,7 @@ If your extension manages MCP servers via its own JSON file (e.g. `cline_mcp_set
 
 #### Step 6: Verify in Remote VS Code
 
-1. In the Cline or Roo Code MCP panel on the remote host, check that the `ovirt` server has a green status indicator and reports all 136 tools.
+1. In the Cline or Roo Code MCP panel on the remote host, check that the `ovirt` server has a green status indicator and reports all 137 tools.
 2. In the AI chat, submit a test prompt:
    ```text
    Test hypervisor connection using ovirt_test_connection, then list the first 5 VMs with ovirt_vm_list.
@@ -931,7 +942,7 @@ If your extension manages MCP servers via its own JSON file (e.g. `cline_mcp_set
 Just like with VS Code Remote - SSH, when Kiro IDE connects to a remote Linux jumpbox:
 - The Kiro UI client runs on your local machine.
 - Kiro's background agent runner and MCP server processes execute **remotely** on the jumpbox.
-- All 136 `ovirt-mcp` tools run natively in the remote Linux virtualenv with direct access to internal OLVM/oVirt management subnets.
+- All 137 `ovirt-mcp` tools run natively in the remote Linux virtualenv with direct access to internal OLVM/oVirt management subnets.
 
 #### Step 1: Connect to Remote Linux Host in Kiro
 
@@ -1009,7 +1020,7 @@ If you want `ovirt-mcp` to be available across all workspaces on your remote Lin
 
 #### Step 4: Verification and Live Interaction in Kiro
 
-1. In Kiro's MCP panel, verify that `ovirt` shows **Connected** with 136 tools available.
+1. In Kiro's MCP panel, verify that `ovirt` shows **Connected** with 137 tools available.
 2. Open the Kiro Agent chat panel and try the following real-world virtualization workflows:
 
 ##### Diagnostic Query:

@@ -1,6 +1,6 @@
 # oVirt / OLVM MCP Server - Complete Tool Reference Catalog
 
-> **Architecture Note:** This document provides the complete, authoritative parameter reference, input/output schemas, safety rules, and example responses for all **136 tools** provided by `ovirt-mcp`. For server installation, architecture, authentication, and client configuration, refer back to [README.md](README.md).
+> **Architecture Note:** This document provides the complete, authoritative parameter reference, input/output schemas, safety rules, and example responses for all **137 tools** provided by `ovirt-mcp`. For server installation, architecture, authentication, and client configuration, refer back to [README.md](README.md).
 
 ## Table of Contents
 
@@ -987,6 +987,7 @@ Lists all hypervisor hosts in the virtualization environment across clusters. Re
   - `cpu_sockets`: Physical socket count.
   - `total_memory_gb`: Total physical RAM in gigabytes.
   - `update_available`: Boolean indicating whether OS or package updates are available for the host.
+  - `iscsi_initiator_name`: Host iSCSI initiator name / IQN (e.g. `"iqn.1994-05.com.redhat:..."`).
 
 **Example Output:**
 ```json
@@ -1025,6 +1026,8 @@ Retrieves comprehensive hardware, BIOS, OS distribution, kernel, VDSM/libvirt ve
   - `cluster_name`: Cluster name.
   - `address`: IP address.
   - `ssh_port`: SSH daemon port.
+  - `vdsm_port`: Host management daemon (VDSM) communication port (typically 54321).
+  - `iscsi_initiator_name`: Host iSCSI initiator name / IQN (e.g. `"iqn.1994-05.com.redhat:..."`).
   - `hardware`: Manufacturer, product model, chassis serial number, UUID.
   - `os`: OS distribution, release, kernel version, KVM, libvirt, and VDSM node versions.
   - `power_management`: Out-of-band IPMI / fencing configuration (`enabled`, `pm_type`, `address`).
@@ -1180,11 +1183,29 @@ Upgrades operating system packages and VDSM on a hypervisor host using the oVirt
 
 ### 49. `ovirt_host_nic_list`
 
-Lists physical network interfaces (pNICs) on a hypervisor host, including device name, MAC address, link speed in Mbps, link status (`up`/`down`), configured IPv4/IPv6 addresses, attached logical networks, and bonding slave memberships.
+Lists physical network interfaces (pNICs) on a hypervisor host, including device name, MAC address, link speed in Mbps, link status (`up`/`down`), configured IPv4/IPv6 addresses, attached logical networks, bonding slave memberships, and decoded LLDP neighbor telemetry (connected switch port ID, chassis ID, switch hostname).
 
 - **Inputs:**
   - `name_or_id` *(string, required)*: Host display name or UUID.
+  - `include_lldp` *(boolean, optional, default: true)*: Whether to query LLDP neighbor discovery data for switch chassis and connected port details.
 - **Outputs:** `list[HostNicInfo]`
+  - `id`: Physical network interface UUID.
+  - `name`: Interface device name (e.g. `'eth0'`, `'ens192'`, `'bond0'`).
+  - `mac_address`: Physical MAC hardware address.
+  - `speed_mbps`: Link speed in megabits per second.
+  - `status`: Link operational status (`'up'`, `'down'`).
+  - `ip_addresses`: Configured IPv4/IPv6 addresses.
+  - `network_name`: Attached logical network name.
+  - `bridged`: Whether interface participates in a bridged network.
+  - `bonding_slaves`: Slave interfaces if this interface is a bond.
+  - `lldp`: Decoded Link Layer Discovery Protocol (LLDP) neighbor telemetry:
+    - `port_id`: Physical switch port identifier connected to this host NIC (e.g. `"GigabitEthernet1/0/24"`, `"1/1/2"`).
+    - `chassis_id`: Connected switch chassis MAC / identifier.
+    - `port_description`: Configured port description on switch.
+    - `system_name`: Connected switch system / hostname.
+    - `system_description`: Switch hardware vendor, model, and OS firmware version.
+    - `management_address`: Switch management IP address.
+    - `elements`: List of raw or parsed TLV information elements.
 
 ---
 
@@ -1787,7 +1808,37 @@ Retrieves deep technical configuration and capability profile of a virtualizatio
 
 ---
 
-### 89. `ovirt_datacenter_list`
+### 89. `ovirt_cluster_update`
+
+Updates configuration, live migration convergence parameters, scheduling policy, fencing rules, and metadata for an existing virtualization cluster.
+
+> [!NOTE]
+> Operational settings (live migration policies, scheduling policies, fencing rules, administrator comments, and descriptions) are applied online dynamically without requiring cluster or host maintenance mode.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Cluster display name or UUID.
+  - `name` *(string, optional)*: Optional new display name for the cluster.
+  - `description` *(string, optional)*: Optional descriptive summary.
+  - `comment` *(string, optional)*: Optional administrative comment.
+  - `migration_auto_converge` *(string, optional)*: VM live migration auto-converge throttling (`"true"`, `"false"`, `"inherit"`).
+  - `migration_compressed` *(string, optional)*: Memory page compression during live migration (`"true"`, `"false"`, `"inherit"`).
+  - `migration_encrypted` *(string, optional)*: Migration TLS encryption policy (`"true"`, `"false"`, `"inherit"`).
+  - `migration_bandwidth_method` *(string, optional)*: Bandwidth limit mode (`"auto"`, `"hypervisor_default"`, `"custom"`).
+  - `migration_bandwidth_custom_value` *(integer, optional)*: Custom bandwidth limit in Mbps when bandwidth method is custom.
+  - `migration_parallel_policy` *(string, optional)*: Parallel live migration concurrency (`"auto"`, `"auto_parallel"`, `"custom"`, `"disabled"`, `"inherit"`).
+  - `migration_custom_parallel` *(integer, optional)*: Maximum concurrent parallel migrations per host.
+  - `migration_policy_id` *(string, optional)*: UUID of migration convergence policy.
+  - `scheduling_policy_id` *(string, optional)*: UUID of workload placement scheduling policy.
+  - `scheduling_policy_name` *(string, optional)*: Name of scheduling policy (e.g. `"evenly_distributed"`, `"power_saving"`). Automatically resolved to UUID.
+  - `fencing_enabled` *(boolean, optional)*: Whether host IPMI/power fencing is enabled for the cluster.
+  - `skip_fencing_if_connectivity_broken` *(boolean, optional)*: Skip fencing if host network/storage connectivity is severed.
+  - `skip_fencing_if_sd_active` *(boolean, optional)*: Skip fencing if storage domain heartbeats are active.
+  - `firewall_type` *(string, optional)*: Host firewall manager type (`"firewalld"`, `"iptables"`).
+- **Outputs:** `ClusterDetail`
+
+---
+
+### 90. `ovirt_datacenter_list`
 
 Lists all Data Centers in the virtualization environment, including status (`up`, `uninitialized`), storage type (`shared`, `local`), compatibility version, and quota mode.
 
@@ -1797,7 +1848,7 @@ Lists all Data Centers in the virtualization environment, including status (`up`
 
 ---
 
-### 90. `ovirt_datacenter_get`
+### 91. `ovirt_datacenter_get`
 
 Retrieves complete technical specification of a Data Center, including attached clusters, attached Storage Domains, and defined logical networks.
 
@@ -1807,7 +1858,7 @@ Retrieves complete technical specification of a Data Center, including attached 
 
 ---
 
-### 91. `ovirt_quota_list`
+### 92. `ovirt_quota_list`
 
 Lists resource quotas defined across Data Centers or filtered by a specific Data Center.
 
@@ -1817,7 +1868,7 @@ Lists resource quotas defined across Data Centers or filtered by a specific Data
 
 ---
 
-### 92. `ovirt_quota_get`
+### 93. `ovirt_quota_get`
 
 Retrieves detailed compute and storage limitations defined by a quota, including vCPU limits, memory limits, and storage domain space ceilings.
 
@@ -1828,7 +1879,7 @@ Retrieves detailed compute and storage limitations defined by a quota, including
 
 ---
 
-### 93. `ovirt_quota_create`
+### 94. `ovirt_quota_create`
 
 Creates a new resource quota under a designated Data Center.
 
@@ -1840,7 +1891,7 @@ Creates a new resource quota under a designated Data Center.
 
 ---
 
-### 94. `ovirt_quota_delete`
+### 95. `ovirt_quota_delete`
 
 Deletes a resource quota from a Data Center. Protected by safe-mode confirmation (`confirm=True`). The system Default quota is protected by pre-flight guards.
 
@@ -1852,7 +1903,7 @@ Deletes a resource quota from a Data Center. Protected by safe-mode confirmation
 
 ---
 
-### 95. `ovirt_network_list`
+### 96. `ovirt_network_list`
 
 Lists logical networks across Data Centers or filtered by Data Center, including 802.1Q VLAN encapsulation tag, MTU, and status.
 
@@ -1862,7 +1913,7 @@ Lists logical networks across Data Centers or filtered by Data Center, including
 
 ---
 
-### 96. `ovirt_network_get`
+### 97. `ovirt_network_get`
 
 Retrieves deep technical configuration and operational details of a specific logical network, including MTU size, 802.1Q VLAN tagging, Spanning Tree Protocol (STP), port isolation, assigned network usages (`vm`, `management`, `display`), and attached vNIC profiles.
 
@@ -1882,7 +1933,7 @@ Retrieves deep technical configuration and operational details of a specific log
 
 ---
 
-### 97. `ovirt_network_create`
+### 98. `ovirt_network_create`
 
 Creates a new logical network in a Data Center with optional VLAN tagging and custom MTU (e.g. jumbo frames).
 
@@ -1896,7 +1947,7 @@ Creates a new logical network in a Data Center with optional VLAN tagging and cu
 
 ---
 
-### 98. `ovirt_network_delete`
+### 99. `ovirt_network_delete`
 
 Deletes a logical network from a Data Center. Protected by safe-mode confirmation (`confirm=True`). The default management network `ovirtmgmt` is permanently protected from deletion.
 
@@ -1908,7 +1959,7 @@ Deletes a logical network from a Data Center. Protected by safe-mode confirmatio
 
 ---
 
-### 99. `ovirt_tag_list`
+### 100. `ovirt_tag_list`
 
 Lists hierarchical inventory tags in the oVirt / OLVM virtualization environment, including tag UUID, display name, description, and parent link.
 
@@ -1918,7 +1969,7 @@ Lists hierarchical inventory tags in the oVirt / OLVM virtualization environment
 
 ---
 
-### 100. `ovirt_tag_create`
+### 101. `ovirt_tag_create`
 
 Creates a new inventory tag in oVirt / OLVM with optional parent hierarchical nesting.
 
@@ -1930,7 +1981,7 @@ Creates a new inventory tag in oVirt / OLVM with optional parent hierarchical ne
 
 ---
 
-### 101. `ovirt_tag_delete`
+### 102. `ovirt_tag_delete`
 
 Deletes an inventory tag from oVirt / OLVM. Protected by safe-mode confirmation (`confirm=True`). The system root tag is protected from removal.
 
@@ -1941,7 +1992,7 @@ Deletes an inventory tag from oVirt / OLVM. Protected by safe-mode confirmation 
 
 ---
 
-### 102. `ovirt_vm_tag_assign`
+### 103. `ovirt_vm_tag_assign`
 
 Assigns an inventory tag to a virtual machine.
 
@@ -1952,7 +2003,7 @@ Assigns an inventory tag to a virtual machine.
 
 ---
 
-### 103. `ovirt_vm_tag_unassign`
+### 104. `ovirt_vm_tag_unassign`
 
 Unassigns an inventory tag from a virtual machine.
 
@@ -1963,7 +2014,7 @@ Unassigns an inventory tag from a virtual machine.
 
 ---
 
-### 104. `ovirt_host_tag_assign`
+### 105. `ovirt_host_tag_assign`
 
 Assigns an inventory tag to a hypervisor host.
 
@@ -1974,7 +2025,7 @@ Assigns an inventory tag to a hypervisor host.
 
 ---
 
-### 105. `ovirt_host_tag_unassign`
+### 106. `ovirt_host_tag_unassign`
 
 Unassigns an inventory tag from a hypervisor host.
 
@@ -1985,7 +2036,7 @@ Unassigns an inventory tag from a hypervisor host.
 
 ---
 
-### 106. `ovirt_user_tag_list`
+### 107. `ovirt_user_tag_list`
 
 Lists inventory tags assigned to an oVirt / OLVM user.
 
@@ -1995,7 +2046,7 @@ Lists inventory tags assigned to an oVirt / OLVM user.
 
 ---
 
-### 107. `ovirt_user_tag_assign`
+### 108. `ovirt_user_tag_assign`
 
 Assigns an inventory tag to an oVirt / OLVM user.
 
@@ -2006,7 +2057,7 @@ Assigns an inventory tag to an oVirt / OLVM user.
 
 ---
 
-### 108. `ovirt_user_tag_unassign`
+### 109. `ovirt_user_tag_unassign`
 
 Unassigns an inventory tag from an oVirt / OLVM user.
 
@@ -2019,7 +2070,7 @@ Unassigns an inventory tag from an oVirt / OLVM user.
 
 ---
 
-### 109. `ovirt_host_bond_create`
+### 110. `ovirt_host_bond_create`
 
 Creates a bonded network interface on a hypervisor host combining 2 or more physical interfaces. Supports active-backup, 802.3ad (LACP), balance-rr, and custom bond modes.
 
@@ -2032,7 +2083,7 @@ Creates a bonded network interface on a hypervisor host combining 2 or more phys
 
 ---
 
-### 110. `ovirt_host_bond_delete`
+### 111. `ovirt_host_bond_delete`
 
 Deletes a network bond interface from a hypervisor host, releasing slave interfaces back to standalone mode. Protected by safe-mode confirmation (`confirm=True`).
 
@@ -2046,7 +2097,7 @@ Deletes a network bond interface from a hypervisor host, releasing slave interfa
 
 ---
 
-### 111. `ovirt_system_events`
+### 112. `ovirt_system_events`
 
 Retrieves global audit log events, errors, warnings, alerts, and operational messages across the entire virtualization environment (hosts, VMs, storage domains, clusters). Supports filtering by severity level (`'alert'`, `'error'`, `'warning'`, `'normal'`), custom search queries, and pagination with `max_events` and `from_event_id`. Automatically correlates entities with their unique UUIDs and names for tracing across telemetry tools.
 
@@ -2115,7 +2166,7 @@ Retrieves global audit log events, errors, warnings, alerts, and operational mes
 ---
 
 
-### 112. `ovirt_user_list`
+### 113. `ovirt_user_list`
 
 Lists user accounts registered in oVirt / OLVM across all authorization domains (e.g. `internal-authz`, Active Directory, LDAP, Keycloak). Supports filtering via standard oVirt search query expressions and pagination limits.
 
@@ -2150,7 +2201,7 @@ Lists user accounts registered in oVirt / OLVM across all authorization domains 
 
 ---
 
-### 113. `ovirt_user_get`
+### 114. `ovirt_user_get`
 
 Retrieves comprehensive account information for a specific user, including assigned authorization roles and total discrete permission grants count.
 
@@ -2178,7 +2229,7 @@ Retrieves comprehensive account information for a specific user, including assig
 
 ---
 
-### 114. `ovirt_user_add`
+### 115. `ovirt_user_add`
 
 Imports and registers a user from an external or internal authorization provider / directory service (e.g. `internal-authz`, LDAP, Active Directory, Keycloak) into the virtualization engine.
 
@@ -2208,7 +2259,7 @@ Imports and registers a user from an external or internal authorization provider
 
 ---
 
-### 115. `ovirt_user_delete`
+### 116. `ovirt_user_delete`
 
 De-registers and removes a user account from the oVirt / OLVM virtualization engine.
 
@@ -2239,7 +2290,7 @@ De-registers and removes a user account from the oVirt / OLVM virtualization eng
 
 ---
 
-### 116. `ovirt_role_list`
+### 117. `ovirt_role_list`
 
 Lists authorization roles defined in the system (e.g. `SuperUser`, `DataCenterAdmin`, `ClusterAdmin`, `UserRole`, `PowerUserRole`). Allows filtering for administrative roles only or standard user roles only.
 
@@ -2274,7 +2325,7 @@ Lists authorization roles defined in the system (e.g. `SuperUser`, `DataCenterAd
 
 ---
 
-### 117. `ovirt_role_add`
+### 118. `ovirt_role_add`
 
 Creates a new custom authorization role in oVirt / OLVM with a granular list of administrative or user permits. Enables enterprise governance and least-privilege security scoping for automation and AI agents.
 
@@ -2293,7 +2344,7 @@ Creates a new custom authorization role in oVirt / OLVM with a granular list of 
 
 ---
 
-### 118. `ovirt_role_delete`
+### 119. `ovirt_role_delete`
 
 Deletes a custom authorization role from oVirt / OLVM. Built-in system roles (e.g., `SuperUser`, `UserRole`, `PowerUserRole`, `ClusterAdmin`, `DataCenterAdmin`) are permanently protected and immutable.
 
@@ -2311,7 +2362,7 @@ Deletes a custom authorization role from oVirt / OLVM. Built-in system roles (e.
 
 ---
 
-### 119. `ovirt_permission_list`
+### 120. `ovirt_permission_list`
 
 Lists authorization permission grants across the virtualization environment. Supports filtering by specific target user or role to inspect the current privilege topology.
 
@@ -2346,7 +2397,7 @@ Lists authorization permission grants across the virtualization environment. Sup
 
 ---
 
-### 120. `ovirt_permission_add`
+### 121. `ovirt_permission_add`
 
 Grants an authorization role to a user on a target entity or system-wide.
 
@@ -2384,7 +2435,7 @@ Grants an authorization role to a user on a target entity or system-wide.
 
 ---
 
-### 121. `ovirt_permission_remove`
+### 122. `ovirt_permission_remove`
 
 Revokes and removes an authorization permission grant from oVirt / OLVM by its permission UUID.
 
@@ -2417,7 +2468,7 @@ Revokes and removes an authorization permission grant from oVirt / OLVM by its p
 
 ---
 
-### 122. `ovirt_vm_pool_list`
+### 123. `ovirt_vm_pool_list`
 
 Lists all Virtual Machine Pools (VDI, on-demand developer pools) in the environment, reporting pool name, cluster, template, capacity, pre-started VMs, max VMs per user, and allocation status.
 
@@ -2436,7 +2487,7 @@ Lists all Virtual Machine Pools (VDI, on-demand developer pools) in the environm
 
 ---
 
-### 123. `ovirt_vm_pool_get`
+### 124. `ovirt_vm_pool_get`
 
 Retrieves deep technical configuration of a VM Pool, including a full inventory of all member virtual machines, their power states, and runtime user allocations.
 
@@ -2448,7 +2499,7 @@ Retrieves deep technical configuration of a VM Pool, including a full inventory 
 
 ---
 
-### 124. `ovirt_vm_pool_create`
+### 125. `ovirt_vm_pool_create`
 
 Creates a new Virtual Machine Pool based on a designated cluster and template.
 
@@ -2469,7 +2520,7 @@ Creates a new Virtual Machine Pool based on a designated cluster and template.
 
 ---
 
-### 125. `ovirt_vm_pool_update`
+### 126. `ovirt_vm_pool_update`
 
 Modifies runtime and capacity parameters of an existing Virtual Machine Pool (e.g. scaling up pool size, adjusting pre-started instances).
 
@@ -2484,7 +2535,7 @@ Modifies runtime and capacity parameters of an existing Virtual Machine Pool (e.
 
 ---
 
-### 126. `ovirt_vm_pool_delete`
+### 127. `ovirt_vm_pool_delete`
 
 Deletes a Virtual Machine Pool and cleans up unallocated pool-managed virtual machines.
 
@@ -2497,7 +2548,7 @@ Deletes a Virtual Machine Pool and cleans up unallocated pool-managed virtual ma
 
 ---
 
-### 127. `ovirt_vm_pool_allocate_vm`
+### 128. `ovirt_vm_pool_allocate_vm`
 
 Acquires and allocates an available virtual machine from a VM Pool for the requesting user or caller. If a pre-started VM is ready, it is immediately assigned; otherwise, a member VM is started on-demand.
 
@@ -2509,7 +2560,7 @@ Acquires and allocates an available virtual machine from a VM Pool for the reque
 
 ---
 
-### 128. `ovirt_vm_checkpoint_list`
+### 129. `ovirt_vm_checkpoint_list`
 
 Lists all Changed Block Tracking (CBT) incremental checkpoints for a virtual machine, reporting checkpoint UUIDs, parent checkpoint linkage in the backup chain, creation timestamps, and tracked disk devices.
 
@@ -2525,7 +2576,7 @@ Lists all Changed Block Tracking (CBT) incremental checkpoints for a virtual mac
 
 ---
 
-### 129. `ovirt_vm_checkpoint_get`
+### 130. `ovirt_vm_checkpoint_get`
 
 Retrieves detailed technical information for a specific CBT checkpoint on a virtual machine.
 
@@ -2536,7 +2587,7 @@ Retrieves detailed technical information for a specific CBT checkpoint on a virt
 
 ---
 
-### 130. `ovirt_vm_checkpoint_delete`
+### 131. `ovirt_vm_checkpoint_delete`
 
 Deletes a CBT checkpoint from a virtual machine and cleans up the associated QEMU block dirty tracking bitmaps.
 
@@ -2550,7 +2601,7 @@ Deletes a CBT checkpoint from a virtual machine and cleans up the associated QEM
 
 ---
 
-### 131. `ovirt_vm_backup_list`
+### 132. `ovirt_vm_backup_list`
 
 Lists all live VM backup sessions (in-progress, ready, succeeded, failed) associated with a virtual machine.
 
@@ -2567,7 +2618,7 @@ Lists all live VM backup sessions (in-progress, ready, succeeded, failed) associ
 
 ---
 
-### 132. `ovirt_vm_backup_get`
+### 133. `ovirt_vm_backup_get`
 
 Retrieves the real-time operational status and transfer readiness of a VM backup session.
 
@@ -2578,7 +2629,7 @@ Retrieves the real-time operational status and transfer readiness of a VM backup
 
 ---
 
-### 133. `ovirt_vm_backup_start`
+### 134. `ovirt_vm_backup_start`
 
 Initiates an enterprise live VM backup session using QEMU incremental backup / CBT technology. Supports full backups or incremental backups (by supplying `from_checkpoint_id`). When initiated, oVirt creates scratch disks and prepares NBD / image transfers without interrupting VM execution.
 
@@ -2599,7 +2650,7 @@ Initiates an enterprise live VM backup session using QEMU incremental backup / C
 
 ---
 
-### 134. `ovirt_vm_backup_finalize`
+### 135. `ovirt_vm_backup_finalize`
 
 Finalizes a VM backup session after backup software completes transferring disk data. Releases scratch disks, tears down NBD transfer endpoints, and commits the CBT checkpoint.
 
@@ -2619,7 +2670,7 @@ Finalizes a VM backup session after backup software completes transferring disk 
 
 ---
 
-### 135. `ovirt_job_list`
+### 136. `ovirt_job_list`
 
 Lists asynchronous engine background jobs (tasks, operations, migrations, disk operations, snapshot lifecycle tasks) with execution status, timestamps, and initiator.
 
@@ -2658,7 +2709,7 @@ Lists asynchronous engine background jobs (tasks, operations, migrations, disk o
 
 ---
 
-### 136. `ovirt_job_get`
+### 137. `ovirt_job_get`
 
 Retrieves deep technical metadata and child execution steps for an asynchronous engine job, tracking real-time progress percentages and execution hypervisor hosts.
 

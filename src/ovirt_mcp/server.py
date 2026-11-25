@@ -185,6 +185,7 @@ from ovirt_mcp.tools.backups import (
 from ovirt_mcp.tools.clusters import (
     get_cluster_tool,
     list_clusters_tool,
+    update_cluster_tool,
 )
 from ovirt_mcp.tools.compute import (
     get_vm_console_file_tool,
@@ -1439,12 +1440,16 @@ def ovirt_host_upgrade(
     description=(
         "List physical network interfaces (pNICs) on a hypervisor host, "
         "including interface name, MAC address, speed in Mbps, operational status, "
-        "IP addresses, bridge attachments, and bonding slave memberships."
+        "IP addresses, bridge attachments, bonding slave memberships, and decoded "
+        "LLDP neighbor telemetry (connected switch port ID, chassis ID, system name)."
     ),
 )
-def ovirt_host_nic_list(name_or_id: str) -> list[HostNicInfo]:
+def ovirt_host_nic_list(
+    name_or_id: str,
+    include_lldp: bool = True,
+) -> list[HostNicInfo]:
     """List physical network interfaces on a host."""
-    return list_host_nics_tool(name_or_id=name_or_id)
+    return list_host_nics_tool(name_or_id=name_or_id, include_lldp=include_lldp)
 
 
 @mcp.tool(
@@ -2181,6 +2186,58 @@ def ovirt_cluster_list(
 def ovirt_cluster_get(name_or_id: str) -> ClusterDetail:
     """Retrieve full configuration and capability profile of a cluster."""
     return get_cluster_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_cluster_update",
+    description=(
+        "Update configuration, live migration convergence parameters, scheduling policy, "
+        "fencing rules, and metadata for a cluster. Operational settings (migration policies, "
+        "scheduling policies, fencing, comment) are applied online dynamically without requiring "
+        "cluster or host maintenance mode."
+    ),
+)
+def ovirt_cluster_update(
+    name_or_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    migration_auto_converge: str | None = None,
+    migration_compressed: str | None = None,
+    migration_encrypted: str | None = None,
+    migration_bandwidth_method: str | None = None,
+    migration_bandwidth_custom_value: int | None = None,
+    migration_parallel_policy: str | None = None,
+    migration_custom_parallel: int | None = None,
+    migration_policy_id: str | None = None,
+    scheduling_policy_id: str | None = None,
+    scheduling_policy_name: str | None = None,
+    fencing_enabled: bool | None = None,
+    skip_fencing_if_connectivity_broken: bool | None = None,
+    skip_fencing_if_sd_active: bool | None = None,
+    firewall_type: str | None = None,
+) -> ClusterDetail:
+    """Update settings and policies of an existing virtualization cluster."""
+    return update_cluster_tool(
+        name_or_id=name_or_id,
+        name=name,
+        description=description,
+        comment=comment,
+        migration_auto_converge=migration_auto_converge,
+        migration_compressed=migration_compressed,
+        migration_encrypted=migration_encrypted,
+        migration_bandwidth_method=migration_bandwidth_method,
+        migration_bandwidth_custom_value=migration_bandwidth_custom_value,
+        migration_parallel_policy=migration_parallel_policy,
+        migration_custom_parallel=migration_custom_parallel,
+        migration_policy_id=migration_policy_id,
+        scheduling_policy_id=scheduling_policy_id,
+        scheduling_policy_name=scheduling_policy_name,
+        fencing_enabled=fencing_enabled,
+        skip_fencing_if_connectivity_broken=skip_fencing_if_connectivity_broken,
+        skip_fencing_if_sd_active=skip_fencing_if_sd_active,
+        firewall_type=firewall_type,
+    )
 
 
 @mcp.tool(

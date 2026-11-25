@@ -19,6 +19,8 @@ from ovirt_mcp.models.host import (
     HostHardwareInfo,
     HostLifecycleResult,
     HostNicInfo,
+    HostNicLldpElement,
+    HostNicLldpInfo,
     HostNumaNodeInfo,
     HostOSInfo,
     HostPowerManagement,
@@ -57,6 +59,16 @@ def _safe_str(val: Any) -> str | None:
     if type(val).__name__ in ("MagicMock", "Mock"):
         return None
     return str(val)
+
+
+def _safe_int(val: Any) -> int | None:
+    """Extract integer value safely handling None and mock objects."""
+    if val is None or type(val).__name__ in ("MagicMock", "Mock"):
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
 
 
 def _get_active_vms_on_host(
@@ -162,6 +174,7 @@ def list_hosts_tool(
         total_mem_gb = round(mem_bytes / (1024**3), 2)
 
         active_count, _ = _get_active_vms_on_host(system_service, h_name, h_id)
+        iscsi_initiator = _safe_str(getattr(getattr(h, "iscsi", None), "initiator", None))
 
         results.append(
             HostSummary(
@@ -183,6 +196,7 @@ def list_hosts_tool(
                     if getattr(h, "update_available", None) is not None
                     else None
                 ),
+                iscsi_initiator_name=iscsi_initiator,
             )
         )
 
@@ -392,6 +406,9 @@ def get_host_tool(name_or_id: str) -> HostDetail:
     except Exception as exc:
         logger.debug("Could not fetch real-time stats for host '%s': %s", h_name, exc)
 
+    iscsi_initiator = _safe_str(getattr(getattr(host, "iscsi", None), "initiator", None))
+    vdsm_port = _safe_int(getattr(host, "port", None))
+
     return HostDetail(
         id=h_id,
         name=h_name,
@@ -400,6 +417,7 @@ def get_host_tool(name_or_id: str) -> HostDetail:
         cluster_id=c_id,
         address=addr,
         ssh_port=ssh_port,
+        vdsm_port=vdsm_port,
         active_vms_count=active_count,
         spm_status=spm_status,
         is_nested=is_nested,
@@ -419,6 +437,7 @@ def get_host_tool(name_or_id: str) -> HostDetail:
             if getattr(host, "update_available", None) is not None
             else None
         ),
+        iscsi_initiator_name=iscsi_initiator,
         stats=host_stats,
     )
 
@@ -940,11 +959,111 @@ def upgrade_host_tool(
     )
 
 
-def list_host_nics_tool(name_or_id: str) -> list[HostNicInfo]:
+def _extract_nic_lldp(nic_service: Any) -> HostNicLldpInfo | None:
+    """Extract LLDP information elements for a host NIC."""
+    try:
+        elements_svc = getattr(nic_service, "link_layer_discovery_protocol_elements_service", None)
+        if not elements_svc or not callable(elements_svc):
+            return None
+        raw_elements = elements_svc().list()
+        if not raw_elements:
+            return None
+        if type(raw_elements).__name__ in ("MagicMock", "Mock") and not hasattr(
+            raw_elements, "__iter__"
+        ):
+            return None
+    except Exception as exc:
+        logger.debug("Failed or unsupported LLDP query on NIC: %s", exc)
+        return None
+
+    chassis_id: str | None = None
+    port_id: str | None = None
+    port_desc: str | None = None
+    sys_name: str | None = None
+    sys_desc: str | None = None
+    mgmt_addr: str | None = None
+    elements_list: list[HostNicLldpElement] = []
+
+    try:
+        for elem in raw_elements:
+            if (
+                type(elem).__name__ in ("MagicMock", "Mock")
+                and not hasattr(elem, "name")
+                and not hasattr(elem, "type")
+            ):
+                continue
+            elem_name = _safe_str(getattr(elem, "name", None))
+            elem_type = _safe_int(getattr(elem, "type", None))
+            elem_oui = _safe_int(getattr(elem, "oui", None))
+            elem_subtype = _safe_int(getattr(elem, "subtype", None))
+
+            props_dict: dict[str, str] = {}
+            raw_props = getattr(elem, "properties", None)
+            if raw_props and type(raw_props).__name__ not in ("MagicMock", "Mock"):
+                for p in raw_props:
+                    pk = _safe_str(getattr(p, "name", None))
+                    pv = _safe_str(getattr(p, "value", None))
+                    if pk:
+                        props_dict[pk] = pv or ""
+
+            elements_list.append(
+                HostNicLldpElement(
+                    name=elem_name,
+                    type=elem_type,
+                    oui=elem_oui,
+                    subtype=elem_subtype,
+                    properties=props_dict,
+                )
+            )
+
+            # Standard TLV matching:
+            # type 1 = Chassis ID, type 2 = Port ID, type 4 = Port Description,
+            # type 5 = System Name, type 6 = System Description, type 8 = Management Address
+            name_lower = (elem_name or "").lower()
+            first_prop_val = next(iter(props_dict.values())) if props_dict else None
+
+            if elem_type == 1 or "chassis" in name_lower:
+                chassis_id = props_dict.get("chassis_id") or first_prop_val or elem_name
+            elif elem_type == 2 or "port id" in name_lower or name_lower == "port_id":
+                port_id = props_dict.get("port_id") or first_prop_val or elem_name
+            elif elem_type == 4 or "port desc" in name_lower:
+                port_desc = props_dict.get("description") or first_prop_val or elem_name
+            elif elem_type == 5 or "system name" in name_lower or name_lower == "system_name":
+                sys_name = props_dict.get("system_name") or first_prop_val or elem_name
+            elif elem_type == 6 or "system desc" in name_lower:
+                sys_desc = props_dict.get("description") or first_prop_val or elem_name
+            elif elem_type == 8 or "management" in name_lower:
+                mgmt_addr = (
+                    props_dict.get("address")
+                    or props_dict.get("management_address")
+                    or first_prop_val
+                )
+    except Exception as parse_exc:
+        logger.debug("Failed parsing LLDP elements: %s", parse_exc)
+
+    if not elements_list:
+        return None
+
+    return HostNicLldpInfo(
+        chassis_id=chassis_id,
+        port_id=port_id,
+        port_description=port_desc,
+        system_name=sys_name,
+        system_description=sys_desc,
+        management_address=mgmt_addr,
+        elements=elements_list,
+    )
+
+
+def list_host_nics_tool(
+    name_or_id: str,
+    include_lldp: bool = True,
+) -> list[HostNicInfo]:
     """List physical network interfaces (pNICs) configured on a hypervisor host.
 
     Args:
         name_or_id: Display name or UUID of the hypervisor host.
+        include_lldp: Whether to query LLDP neighbor discovery data for switch port/chassis details.
 
     Returns:
         List of HostNicInfo objects with MAC addresses, speed, link status, and network bindings.
@@ -994,6 +1113,17 @@ def list_host_nics_tool(name_or_id: str) -> list[HostNicInfo]:
         slaves_obj = getattr(bonding_obj, "slaves", None) or [] if bonding_obj else []
         slave_names = [str(getattr(s, "name", "")) for s in slaves_obj if getattr(s, "name", None)]
 
+        lldp_info: HostNicLldpInfo | None = None
+        if include_lldp:
+            try:
+                nics_service = host_service.nics_service()
+                nic_srv_func = getattr(nics_service, "nic_service", None)
+                if nic_srv_func and callable(nic_srv_func):
+                    nic_srv = nic_srv_func(n_id)
+                    lldp_info = _extract_nic_lldp(nic_srv)
+            except Exception as lldp_exc:
+                logger.debug("Could not retrieve LLDP for nic '%s': %s", n_name, lldp_exc)
+
         results.append(
             HostNicInfo(
                 id=n_id,
@@ -1005,6 +1135,7 @@ def list_host_nics_tool(name_or_id: str) -> list[HostNicInfo]:
                 network_name=net_name,
                 bridged=bridged,
                 bonding_slaves=slave_names,
+                lldp=lldp_info,
             )
         )
 

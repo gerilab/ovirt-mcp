@@ -32,6 +32,10 @@ class HostSummary(BaseModel):
     update_available: bool | None = Field(
         default=None, description="Whether OS or package updates are available for this host"
     )
+    iscsi_initiator_name: str | None = Field(
+        default=None,
+        description="Host iSCSI initiator name / IQN (e.g. 'iqn.1994-05.com.redhat:...').",
+    )
 
 
 class HostHardwareInfo(BaseModel):
@@ -112,6 +116,9 @@ class HostDetail(BaseModel):
     cluster_id: str = Field(description="Parent cluster UUID")
     address: str = Field(description="Management IP / hostname")
     ssh_port: int = Field(default=22, description="SSH daemon port")
+    vdsm_port: int | None = Field(
+        default=None, description="Host management daemon (VDSM) port, typically 54321"
+    )
     active_vms_count: int = Field(default=0, description="Running virtual machines count")
     spm_status: str = Field(default="none", description="SPM role status")
     is_nested: bool = Field(default=False, description="Whether host is nested virtualized")
@@ -137,8 +144,60 @@ class HostDetail(BaseModel):
     update_available: bool | None = Field(
         default=None, description="Whether OS or package updates are available for this host"
     )
+    iscsi_initiator_name: str | None = Field(
+        default=None,
+        description="Host iSCSI initiator name / IQN (e.g. 'iqn.1994-05.com.redhat:...').",
+    )
     stats: HostStats | None = Field(
         default=None, description="Real-time performance and telemetry statistics"
+    )
+
+
+class HostNicLldpElement(BaseModel):
+    """Raw or decoded Link Layer Discovery Protocol (LLDP) TLV element received on a host NIC."""
+
+    name: str | None = Field(
+        default=None,
+        description="LLDP element or TLV name (e.g. 'Chassis ID', 'Port ID', 'System Name').",
+    )
+    type: int | None = Field(
+        default=None,
+        description="LLDP TLV type code (e.g. 1=Chassis ID, 2=Port ID, 5=System Name).",
+    )
+    oui: int | None = Field(default=None, description="Organizationally Unique Identifier (OUI).")
+    subtype: int | None = Field(default=None, description="Subtype code for the TLV.")
+    properties: dict[str, str] = Field(
+        default_factory=dict,
+        description="Key-value properties decoded from the LLDP TLV element.",
+    )
+
+
+class HostNicLldpInfo(BaseModel):
+    """Decoded LLDP neighbor data exposing connected switch port and chassis details."""
+
+    chassis_id: str | None = Field(
+        default=None, description="Switch chassis identifier / MAC address."
+    )
+    port_id: str | None = Field(
+        default=None,
+        description=(
+            "Physical switch port identifier connected to this host NIC "
+            "(e.g. 'GigabitEthernet1/0/24', '1/1/2')."
+        ),
+    )
+    port_description: str | None = Field(
+        default=None, description="Configured description on the switch port."
+    )
+    system_name: str | None = Field(default=None, description="Switch hostname or system name.")
+    system_description: str | None = Field(
+        default=None, description="Switch hardware vendor, model, and OS firmware."
+    )
+    management_address: str | None = Field(
+        default=None, description="Switch management IP address."
+    )
+    elements: list[HostNicLldpElement] = Field(
+        default_factory=list,
+        description="List of raw or parsed LLDP information elements.",
     )
 
 
@@ -161,6 +220,10 @@ class HostNicInfo(BaseModel):
     )
     bonding_slaves: list[str] = Field(
         default_factory=list, description="Slave interfaces if this is a bond"
+    )
+    lldp: HostNicLldpInfo | None = Field(
+        default=None,
+        description="LLDP neighbor information exposing connected switch chassis and port ID.",
     )
 
 

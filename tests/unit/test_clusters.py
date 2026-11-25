@@ -10,6 +10,7 @@ from ovirt_mcp.models.cluster import ClusterDetail, ClusterSummary
 from ovirt_mcp.tools.clusters import (
     get_cluster_tool,
     list_clusters_tool,
+    update_cluster_tool,
 )
 
 
@@ -76,11 +77,15 @@ def _setup_mock_cluster_context() -> dict[str, Any]:
     mock_c1.management_network.name = "ovirtmgmt"
 
     mock_clusters_svc.list.return_value = [mock_c1]
+    mock_cluster_svc = MagicMock()
+    mock_clusters_svc.cluster_service.return_value = mock_cluster_svc
     mock_client.find_resource_by_id_or_name.return_value = mock_c1
 
     return {
         "client": mock_client,
         "clusters_svc": mock_clusters_svc,
+        "cluster_svc": mock_cluster_svc,
+        "sys": mock_sys,
         "dcs_svc": mock_dcs_svc,
         "cluster": mock_c1,
         "dc": mock_dc,
@@ -162,3 +167,83 @@ def test_get_cluster_tool_not_found() -> None:
         pytest.raises(OvirtValidationError),
     ):
         get_cluster_tool("NonExistentCluster")
+
+
+def test_update_cluster_tool_success() -> None:
+    ctx = _setup_mock_cluster_context()
+
+    with patch("ovirt_mcp.tools.clusters.get_client", return_value=ctx["client"]):
+        res = update_cluster_tool(
+            name_or_id="ProdCluster",
+            name="ProdClusterUpdated",
+            description="Updated cluster description",
+            comment="Updated cluster comment",
+            migration_auto_converge="true",
+            migration_compressed="false",
+            migration_encrypted="inherit",
+            migration_bandwidth_method="custom",
+            migration_bandwidth_custom_value=1024,
+            migration_parallel_policy="auto_parallel",
+            migration_custom_parallel=2,
+            migration_policy_id="mp-002",
+            scheduling_policy_id="sp-002",
+            fencing_enabled=True,
+            skip_fencing_if_connectivity_broken=True,
+            skip_fencing_if_sd_active=True,
+            firewall_type="firewalld",
+        )
+
+    assert isinstance(res, ClusterDetail)
+    ctx["cluster_svc"].update.assert_called_once()
+    called_obj = ctx["cluster_svc"].update.call_args[0][0]
+    assert called_obj.name == "ProdClusterUpdated"
+    assert called_obj.description == "Updated cluster description"
+    assert called_obj.comment == "Updated cluster comment"
+    assert called_obj.migration.bandwidth.custom_value == 1024
+    assert called_obj.migration.custom_parallel_migrations == 2
+    assert called_obj.migration.policy.id == "mp-002"
+    assert called_obj.scheduling_policy.id == "sp-002"
+    assert called_obj.fencing_policy.enabled is True
+    assert called_obj.fencing_policy.skip_if_connectivity_broken.enabled is True
+    assert called_obj.fencing_policy.skip_if_sd_active.enabled is True
+
+
+def test_update_cluster_tool_resolve_scheduling_policy_name() -> None:
+    ctx = _setup_mock_cluster_context()
+
+    mock_sp = MagicMock()
+    mock_sp.id = "sp-ps-01"
+    mock_sp.name = "power_saving"
+    ctx["sys"].scheduling_policies_service().list.return_value = [mock_sp]
+
+    with patch("ovirt_mcp.tools.clusters.get_client", return_value=ctx["client"]):
+        res = update_cluster_tool(
+            name_or_id="ProdCluster",
+            scheduling_policy_name="power_saving",
+        )
+
+    assert isinstance(res, ClusterDetail)
+    ctx["cluster_svc"].update.assert_called_once()
+    called_obj = ctx["cluster_svc"].update.call_args[0][0]
+    assert called_obj.scheduling_policy.id == "sp-ps-01"
+
+
+def test_update_cluster_tool_no_fields_error() -> None:
+    ctx = _setup_mock_cluster_context()
+
+    with (
+        patch("ovirt_mcp.tools.clusters.get_client", return_value=ctx["client"]),
+        pytest.raises(OvirtValidationError, match="At least one cluster attribute"),
+    ):
+        update_cluster_tool(name_or_id="ProdCluster")
+
+
+def test_update_cluster_tool_not_found() -> None:
+    ctx = _setup_mock_cluster_context()
+    ctx["client"].find_resource_by_id_or_name.return_value = None
+
+    with (
+        patch("ovirt_mcp.tools.clusters.get_client", return_value=ctx["client"]),
+        pytest.raises(OvirtValidationError, match="not found"),
+    ):
+        update_cluster_tool(name_or_id="NonExistentCluster", description="test")
