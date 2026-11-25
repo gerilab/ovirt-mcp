@@ -1515,7 +1515,7 @@ Lists all Storage Domains in oVirt / OLVM with capacity telemetry, storage proto
 
 ### 73. `ovirt_storage_domain_get`
 
-Retrieves deep telemetry, capacity overcommitment, real-time IOPS, stored object counts (disks, templates, VMs), and active workload mapping for a Storage Domain.
+Retrieves deep telemetry, capacity overcommitment, SAN/iSCSI LUN serial numbers, NAS connection endpoints, real-time IOPS, stored object counts (disks, templates, VMs), and active workload mapping for a Storage Domain.
 
 - **Inputs:**
   - `name_or_id` *(string, required)*: Storage domain name or UUID.
@@ -1526,6 +1526,26 @@ Retrieves deep telemetry, capacity overcommitment, real-time IOPS, stored object
   - `supports_discard`: Boolean indicating TRIM / discard support.
   - `warning_low_space_indicator`: Low space threshold percentage.
   - `critical_space_action_blocker`: Critical blocking space threshold in GB.
+  - `lun_serials`: List of hardware serial numbers for underlying iSCSI / SAN LUNs (e.g. `["SN-LUN-998877"]`).
+  - `lun_count`: Count of underlying LUNs.
+  - `logical_units`: Detailed SAN / iSCSI LUN records:
+    - `id`: LUN identifier / SCSI WWID.
+    - `serial`: Hardware serial number of the storage LUN / volume.
+    - `vendor_id`: Storage array vendor (e.g. `"NETAPP"`, `"SYNOLOGY"`, `"DELL"`, `"QNAP"`).
+    - `product_id`: Storage product model.
+    - `size_gb`: Capacity of the LUN in GB.
+    - `target`: iSCSI Target IQN.
+    - `address`: Controller IP address or hostname.
+    - `port`: Port (default 3260).
+    - `portal`: iSCSI portal specification (`address:port,tag`).
+    - `paths`: Active multipath count.
+    - `volume_group_id`: LVM Volume Group UUID.
+  - `storage_connections`: Active storage connection endpoints (NAS exports or iSCSI portals):
+    - `address`: Storage controller IP or FQDN.
+    - `path`: NFS export path (e.g. `/volume1/olvm_data`).
+    - `target`: iSCSI Target IQN.
+    - `nfs_version`: NFS protocol version (`"v3"`, `"v4"`, `"v4_1"`, `"v4_2"`).
+    - `mount_options`: Active NFS mount options.
   - `space_health`: Storage domain capacity health and thin-provisioning overcommitment:
     - `status`: Health status (`"healthy"`, `"warning"`, `"critical"`, `"overcommitted"`).
     - `free_ratio`: Percentage of unallocated physical capacity remaining.
@@ -1730,18 +1750,40 @@ Lists all virtualization clusters in the environment, reporting CPU architecture
 
 ### 88. `ovirt_cluster_get`
 
-Retrieves deep technical configuration and capability profile of a virtualization cluster, including memory overcommit allowance percentage, FIPS cryptographic mode, default BIOS/chipset type (`i440fx_sea_bios`, `q35_secure_boot`), live migration TLS encryption, and fencing policies.
+Retrieves deep technical configuration and capability profile of a virtualization cluster, including VM live migration settings, workload scheduling policies, memory overcommit allowance percentage, FIPS cryptographic mode, default BIOS/chipset type (`i440fx_sea_bios`, `q35_secure_boot`), and fencing policies.
 
 - **Inputs:**
   - `name_or_id` *(string, required)*: Cluster display name or UUID.
 - **Outputs:** `ClusterDetail`
   - `memory_overcommit_percent`: Memory overcommit limit %.
-  - `fips_mode`: FIPS compliance state.
-  - `bios_type`: Default VM BIOS type.
+  - `fips_mode`: FIPS compliance state (`"enabled"`, `"disabled"`).
+  - `bios_type`: Default VM BIOS type (`"i440fx_sea_bios"`, `"q35_secure_boot"`, `"q35_ovmf"`).
   - `threads_as_cores`: SMT/HyperThreading topology mode.
-  - `migration_encrypted`: Whether live migration traffic is encrypted.
-  - `fencing_enabled`: Whether host power fencing is active.
+  - `migration`: Detailed VM Live Migration policy and convergence parameters:
+    - `auto_converge`: Auto-convergence throttling (`"true"`, `"false"`, `"inherit"`).
+    - `compressed`: Memory page compression during live migration (`"true"`, `"false"`, `"inherit"`).
+    - `encrypted`: Migration TLS encryption policy (`"true"`, `"false"`, `"inherit"`).
+    - `bandwidth_assignment_method`: Bandwidth mode (`"auto"`, `"hypervisor_default"`, `"custom"`).
+    - `bandwidth_custom_value`: Custom bandwidth limit in Mbps.
+    - `parallel_migrations_policy`: Parallel migration concurrency (`"auto"`, `"auto_parallel"`, `"custom"`, `"disabled"`).
+    - `custom_parallel_migrations`: Maximum concurrent parallel migrations per host.
+    - `policy_name`: Migration convergence policy name (e.g. `"Minimal downtime"`, `"Post-copy migration"`, `"Suspend workload if needed"`, `"Legacy"`).
+  - `scheduling_policy`: Cluster workload placement and scheduling algorithm details:
+    - `id`: Scheduling policy UUID.
+    - `name`: Policy display name (e.g. `"evenly_distributed"`, `"power_saving"`, `"cluster_maintenance"`, `"vm_to_host_affinity"`).
+    - `description`: Human-readable policy description.
+    - `properties`: Algorithmic threshold parameters (e.g. `HighUtilization`, `LowUtilization`, `CpuOverCommitDurationMinutes`).
+  - `custom_scheduling_policy_properties`: Custom cluster scheduling properties.
+  - `fencing_policy`: Host power fencing and safety bypass rules:
+    - `enabled`: Whether host fencing is enabled.
+    - `skip_if_connectivity_broken`: Skip fencing if network/storage broken.
+    - `skip_if_sd_active`: Skip fencing if storage domain heartbeats active.
+  - `management_network_name`: Name of cluster management network (e.g. `"ovirtmgmt"`).
+  - `firewall_type`: Host firewall management (`"iptables"`, `"nftables"`).
+  - `serial_number_policy`: VM BIOS serial generation policy (`"host"`, `"vm"`, `"custom"`).
+  - `error_handling`: Error strategy upon deployment failures (`"migrate_check"`, `"do_not_migrate"`).
   - `ksm_enabled`: Whether KSM memory deduplication is active.
+  - `comment`: Administrator comment.
 
 ---
 

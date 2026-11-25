@@ -118,6 +118,116 @@ def test_storage_domain_get(mock_client: tuple[MagicMock, MagicMock]) -> None:
     assert detail.supports_discard is True
 
 
+def test_storage_domain_get_iscsi_with_lun_serials(
+    mock_client: tuple[MagicMock, MagicMock],
+) -> None:
+    client, sys_svc = mock_client
+    sds_svc = sys_svc.storage_domains_service.return_value
+
+    mock_sd = MagicMock()
+    mock_sd.id = "sd-iscsi-1"
+    mock_sd.name = "SanStorage01"
+    mock_sd.type = "data"
+    mock_sd.storage.type = "iscsi"
+    mock_sd.available = 500 * (1024**3)
+    mock_sd.used = 200 * (1024**3)
+    mock_sd.storage.address = "10.0.0.50"
+    mock_sd.storage.target = "iqn.2000-01.com.example:storage.target01"
+    mock_sd.storage.port = 3260
+
+    # LUN mock
+    mock_lu = MagicMock()
+    mock_lu.id = "1IET_00010001"
+    mock_lu.serial = "SN-LUN-998877"
+    mock_lu.vendor_id = "SYNOLOGY"
+    mock_lu.product_id = "Enterprise-SAN"
+    mock_lu.size = 700 * (1024**3)
+    mock_lu.target = "iqn.2000-01.com.example:storage.target01"
+    mock_lu.address = "10.0.0.50"
+    mock_lu.port = 3260
+    mock_lu.portal = "10.0.0.50:3260,1"
+    mock_lu.paths = 4
+    mock_lu.volume_group_id = "vg-uuid-100"
+    mock_lu.status = "used"
+
+    mock_sd.storage.logical_units = [mock_lu]
+    client.find_resource_by_id_or_name.return_value = mock_sd
+
+    sd_svc = MagicMock()
+    sds_svc.storage_domain_service.return_value = sd_svc
+    sd_svc.get.return_value = mock_sd
+    sd_svc.disks_service.return_value.list.return_value = []
+    sd_svc.templates_service.return_value.list.return_value = []
+    sd_svc.vms_service.return_value.list.return_value = []
+
+    with patch("ovirt_mcp.tools.storage.get_client", return_value=client):
+        detail = ovirt_storage_domain_get("SanStorage01")
+
+    assert isinstance(detail, StorageDomainDetail)
+    assert detail.name == "SanStorage01"
+    assert detail.storage_type == "iscsi"
+    assert "SN-LUN-998877" in detail.lun_serials
+    assert detail.lun_count == 1
+    assert len(detail.logical_units) == 1
+
+    lu_info = detail.logical_units[0]
+    assert lu_info.id == "1IET_00010001"
+    assert lu_info.serial == "SN-LUN-998877"
+    assert lu_info.vendor_id == "SYNOLOGY"
+    assert lu_info.product_id == "Enterprise-SAN"
+    assert lu_info.size_gb == 700.0
+    assert lu_info.paths == 4
+    assert lu_info.portal == "10.0.0.50:3260,1"
+
+
+def test_storage_domain_get_nas_connections(mock_client: tuple[MagicMock, MagicMock]) -> None:
+    client, sys_svc = mock_client
+    sds_svc = sys_svc.storage_domains_service.return_value
+
+    mock_sd = MagicMock()
+    mock_sd.id = "sd-nfs-1"
+    mock_sd.name = "NasStorage01"
+    mock_sd.type = "data"
+    mock_sd.storage.type = "nfs"
+    mock_sd.storage.address = "10.0.0.60"
+    mock_sd.storage.path = "/volume1/olvm_data"
+    mock_sd.storage.nfs_version = "v4_2"
+    mock_sd.storage.mount_options = "rw,sync,no_subtree_check"
+    mock_sd.storage.logical_units = None
+
+    client.find_resource_by_id_or_name.return_value = mock_sd
+
+    sd_svc = MagicMock()
+    sds_svc.storage_domain_service.return_value = sd_svc
+    sd_svc.get.return_value = mock_sd
+    sd_svc.disks_service.return_value.list.return_value = []
+    sd_svc.templates_service.return_value.list.return_value = []
+    sd_svc.vms_service.return_value.list.return_value = []
+
+    # Mock storage connections subcollection
+    mock_conn = MagicMock()
+    mock_conn.id = "conn-uuid-1"
+    mock_conn.address = "10.0.0.60"
+    mock_conn.path = "/volume1/olvm_data"
+    mock_conn.type = "nfs"
+    mock_conn.nfs_version = "v4_2"
+    mock_conn.mount_options = "rw,sync,no_subtree_check"
+    sd_svc.storage_connections_service.return_value.list.return_value = [mock_conn]
+
+    with patch("ovirt_mcp.tools.storage.get_client", return_value=client):
+        detail = ovirt_storage_domain_get("NasStorage01")
+
+    assert isinstance(detail, StorageDomainDetail)
+    assert detail.name == "NasStorage01"
+    assert detail.address == "10.0.0.60"
+    assert detail.path == "/volume1/olvm_data"
+    assert detail.nfs_version == "v4_2"
+    assert detail.mount_options == "rw,sync,no_subtree_check"
+    assert len(detail.storage_connections) == 1
+    assert detail.storage_connections[0].id == "conn-uuid-1"
+    assert detail.storage_connections[0].path == "/volume1/olvm_data"
+
+
 def test_storage_domain_create_nfs_success(mock_client: tuple[MagicMock, MagicMock]) -> None:
     client, sys_svc = mock_client
     sds_svc = sys_svc.storage_domains_service.return_value

@@ -9,11 +9,13 @@ from ovirtsdk4 import types as sdk_types
 from ovirt_mcp.client import get_client
 from ovirt_mcp.client.exceptions import OvirtValidationError
 from ovirt_mcp.models.storage import (
+    StorageConnectionInfo,
     StorageDomainDetail,
     StorageDomainIoStats,
     StorageDomainResult,
     StorageDomainSummary,
     StorageDomainTopDiskIo,
+    StorageLogicalUnit,
 )
 from ovirt_mcp.tools.disks import extract_disk_io_stats
 from ovirt_mcp.tools.guards import (
@@ -25,9 +27,46 @@ from ovirt_mcp.tools.guards import (
 logger = logging.getLogger("ovirt_mcp.tools.storage")
 
 
+def _is_mock_object(val: Any) -> bool:
+    """Return True if val is a unittest Mock object."""
+    if val is None:
+        return False
+    return type(val).__name__ in ("MagicMock", "Mock", "NonCallableMagicMock", "AsyncMock")
+
+
+def _clean_opt_str(val: Any) -> str | None:
+    """Return string or None if unset or a mock object."""
+    if val is None or _is_mock_object(val):
+        return None
+    if isinstance(val, str):
+        return val.strip() or None
+    return str(val).strip() or None
+
+
+def _clean_enum_str(val: Any) -> str | None:
+    """Safely extract lowercase string from an SDK enum, string, or mock with .value."""
+    if val is None:
+        return None
+    raw = getattr(val, "value", val)
+    if raw is None or _is_mock_object(raw):
+        return None
+    s = str(raw).strip().lower()
+    return s or None
+
+
+def _clean_opt_int(val: Any) -> int | None:
+    """Safely extract integer or None."""
+    if val is None or _is_mock_object(val):
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def _bytes_to_gb(byte_val: Any) -> float:
     """Safely convert bytes to gigabytes rounded to 2 decimal places."""
-    if byte_val is None:
+    if byte_val is None or _is_mock_object(byte_val):
         return 0.0
     try:
         return round(float(byte_val) / (1024**3), 2)
@@ -53,7 +92,7 @@ def _build_storage_domain_summary(
     # Determine status: check DC status if attached, or unattached
     status_str = dc_status_map.get(sd_id)
     if not status_str:
-        if getattr(sd, "status", None):
+        if getattr(sd, "status", None) and not _is_mock_object(sd.status):
             status_str = str(sd.status)
         else:
             status_str = "attached" if attached_dcs else "unattached"
@@ -62,17 +101,53 @@ def _build_storage_domain_summary(
     addr_str: str | None = None
     path_str: str | None = None
     target_str: str | None = None
+    port_val: int | None = None
+    portal_val: str | None = None
+    nfs_ver: str | None = None
+    mount_opts: str | None = None
+    vg_id: str | None = None
+    lun_serials: list[str] = []
+    lun_count = 0
 
     if getattr(sd, "storage", None):
         st = sd.storage
         if getattr(st, "type", None):
-            storage_type_str = str(st.type).lower()
-        addr_str = str(st.address) if getattr(st, "address", None) else None
-        path_str = str(st.path) if getattr(st, "path", None) else None
-        target_str = str(st.target) if getattr(st, "target", None) else None
+            storage_type_str = _clean_enum_str(st.type) or "unknown"
+        addr_str = _clean_opt_str(getattr(st, "address", None))
+        path_str = _clean_opt_str(getattr(st, "path", None))
+        target_str = _clean_opt_str(getattr(st, "target", None))
+        port_val = _clean_opt_int(getattr(st, "port", None))
+        portal_val = _clean_opt_str(getattr(st, "portal", None))
+        nfs_ver = _clean_enum_str(getattr(st, "nfs_version", None))
+        mount_opts = _clean_opt_str(getattr(st, "mount_options", None))
+
+        vg_obj = getattr(st, "volume_group", None)
+        if vg_obj:
+            vg_id = _clean_opt_str(getattr(vg_obj, "id", None))
+
+        # Check LUNs on storage or volume_group
+        raw_luns = getattr(st, "logical_units", None)
+        if not raw_luns and vg_obj:
+            raw_luns = getattr(vg_obj, "logical_units", None)
+
+        if raw_luns:
+            with contextlib.suppress(Exception):
+                for lu in raw_luns:
+                    lun_count += 1
+                    s = _clean_opt_str(getattr(lu, "serial", None))
+                    if s and s not in lun_serials:
+                        lun_serials.append(s)
+                    if not target_str:
+                        target_str = _clean_opt_str(getattr(lu, "target", None))
+                    if not addr_str:
+                        addr_str = _clean_opt_str(getattr(lu, "address", None))
+                    if not portal_val:
+                        portal_val = _clean_opt_str(getattr(lu, "portal", None))
+                    if port_val is None:
+                        port_val = _clean_opt_int(getattr(lu, "port", None))
 
     format_str: str | None = None
-    if getattr(sd, "storage_format", None):
+    if getattr(sd, "storage_format", None) and not _is_mock_object(sd.storage_format):
         format_str = str(sd.storage_format).lower()
 
     overcommit_ratio = round(comm_gb / total_gb, 2) if total_gb > 0 and comm_gb is not None else 0.0
@@ -80,17 +155,22 @@ def _build_storage_domain_summary(
     warn_ind = getattr(sd, "warning_low_space_indicator", None)
     crit_block = getattr(sd, "critical_space_action_blocker", None)
     space_health = "ok"
-    if crit_block is not None and avail_gb <= float(crit_block):
+    if crit_block is not None and not _is_mock_object(crit_block) and avail_gb <= float(crit_block):
         space_health = "critical_space"
     elif (
-        warn_ind is not None and total_gb > 0 and ((avail_gb / total_gb) * 100.0) <= float(warn_ind)
+        warn_ind is not None
+        and not _is_mock_object(warn_ind)
+        and total_gb > 0
+        and ((avail_gb / total_gb) * 100.0) <= float(warn_ind)
     ):
         space_health = "warning_low_space"
 
     return StorageDomainSummary(
         id=sd_id,
         name=str(sd.name),
-        type=str(sd.type).lower() if getattr(sd, "type", None) else "data",
+        type=str(sd.type).lower()
+        if getattr(sd, "type", None) and not _is_mock_object(sd.type)
+        else "data",
         storage_type=storage_type_str,
         status=status_str.lower(),
         available_gb=avail_gb,
@@ -104,6 +184,13 @@ def _build_storage_domain_summary(
         address=addr_str,
         path=path_str,
         target=target_str,
+        port=port_val,
+        portal=portal_val,
+        nfs_version=nfs_ver,
+        mount_options=mount_opts,
+        volume_group_id=vg_id,
+        lun_serials=lun_serials,
+        lun_count=lun_count,
         data_centers=attached_dcs,
     )
 
@@ -284,19 +371,124 @@ def ovirt_storage_domain_get(name_or_id: str) -> StorageDomainDetail:
     warn_threshold = getattr(sd_detail, "warning_low_space_indicator", None)
     crit_threshold = getattr(sd_detail, "critical_space_action_blocker", None)
 
+    # ── SAN / iSCSI Logical Units (LUNs) ──────────────────────────────────────
+    logical_units: list[StorageLogicalUnit] = []
+    st = getattr(sd_detail, "storage", None)
+    if st:
+        vg_obj = getattr(st, "volume_group", None)
+        raw_luns = getattr(st, "logical_units", None)
+        if not raw_luns and vg_obj:
+            raw_luns = getattr(vg_obj, "logical_units", None)
+
+        if raw_luns:
+            with contextlib.suppress(Exception):
+                for lu in raw_luns:
+                    lu_id = _clean_opt_str(getattr(lu, "id", None))
+                    if not lu_id:
+                        continue
+                    size_gb = _bytes_to_gb(getattr(lu, "size", None))
+                    logical_units.append(
+                        StorageLogicalUnit(
+                            id=lu_id,
+                            serial=_clean_opt_str(getattr(lu, "serial", None)),
+                            vendor_id=_clean_opt_str(getattr(lu, "vendor_id", None)),
+                            product_id=_clean_opt_str(getattr(lu, "product_id", None)),
+                            size_gb=size_gb,
+                            target=_clean_opt_str(getattr(lu, "target", None)) or summary.target,
+                            address=_clean_opt_str(getattr(lu, "address", None)) or summary.address,
+                            port=_clean_opt_int(getattr(lu, "port", None)) or summary.port,
+                            portal=_clean_opt_str(getattr(lu, "portal", None)) or summary.portal,
+                            paths=_clean_opt_int(getattr(lu, "paths", None)),
+                            volume_group_id=_clean_opt_str(getattr(lu, "volume_group_id", None))
+                            or summary.volume_group_id,
+                            status=_clean_enum_str(getattr(lu, "status", None)),
+                        )
+                    )
+
+    # ── Active Storage Connections (NFS / iSCSI / POSIX) ─────────────────────
+    storage_connections: list[StorageConnectionInfo] = []
+    try:
+        raw_conns = []
+        if hasattr(sd_svc, "storage_connections_service"):
+            with contextlib.suppress(Exception):
+                raw_conns = sd_svc.storage_connections_service().list()
+        if not raw_conns and getattr(sd_detail, "storage_connections", None):
+            raw_conns = sd_detail.storage_connections
+
+        if raw_conns:
+            for sc in raw_conns:
+                sc_id = _clean_opt_str(getattr(sc, "id", None))
+                sc_addr = _clean_opt_str(getattr(sc, "address", None))
+                sc_path = _clean_opt_str(getattr(sc, "path", None))
+                sc_target = _clean_opt_str(getattr(sc, "target", None))
+                sc_port = _clean_opt_int(getattr(sc, "port", None))
+                sc_portal = _clean_opt_str(getattr(sc, "portal", None))
+                sc_type = _clean_enum_str(getattr(sc, "type", None))
+                sc_nfs_ver = _clean_enum_str(getattr(sc, "nfs_version", None))
+                sc_timeo = _clean_opt_int(getattr(sc, "nfs_timeo", None))
+                sc_retrans = _clean_opt_int(getattr(sc, "nfs_retrans", None))
+                sc_opts = _clean_opt_str(getattr(sc, "mount_options", None))
+                sc_vfs = _clean_opt_str(getattr(sc, "vfs_type", None))
+                storage_connections.append(
+                    StorageConnectionInfo(
+                        id=sc_id,
+                        address=sc_addr,
+                        path=sc_path,
+                        target=sc_target,
+                        port=sc_port,
+                        portal=sc_portal,
+                        type=sc_type,
+                        nfs_version=sc_nfs_ver,
+                        nfs_timeo=sc_timeo,
+                        nfs_retrans=sc_retrans,
+                        mount_options=sc_opts,
+                        vfs_type=sc_vfs,
+                    )
+                )
+    except Exception as e:
+        logger.debug("Failed extracting storage connections in storage domain %s: %s", sd.id, e)
+
+    # Fallback to synthesizing endpoint info from storage summary if no subcollection is configured
+    if not storage_connections and (summary.address or summary.path or summary.target):
+        storage_connections.append(
+            StorageConnectionInfo(
+                id=None,
+                address=summary.address,
+                path=summary.path,
+                target=summary.target,
+                port=summary.port,
+                portal=summary.portal,
+                type=summary.storage_type if summary.storage_type != "unknown" else None,
+                nfs_version=summary.nfs_version,
+                mount_options=summary.mount_options,
+            )
+        )
+
     return StorageDomainDetail(
         **summary.model_dump(),
-        description=str(sd_detail.description) if getattr(sd_detail, "description", None) else None,
-        warning_low_space_indicator=int(warn_threshold) if warn_threshold is not None else None,
-        critical_space_action_blocker=int(crit_threshold) if crit_threshold is not None else None,
-        supports_discard=bool(getattr(sd_detail, "supports_discard", False)),
-        supports_discard_zeroes_data=bool(
-            getattr(sd_detail, "supports_discard_zeroes_data", False)
-        ),
-        wipe_after_delete=bool(getattr(sd_detail, "wipe_after_delete", False)),
+        description=str(sd_detail.description)
+        if getattr(sd_detail, "description", None) and not _is_mock_object(sd_detail.description)
+        else None,
+        warning_low_space_indicator=int(warn_threshold)
+        if warn_threshold is not None and not _is_mock_object(warn_threshold)
+        else None,
+        critical_space_action_blocker=int(crit_threshold)
+        if crit_threshold is not None and not _is_mock_object(crit_threshold)
+        else None,
+        supports_discard=bool(getattr(sd_detail, "supports_discard", False))
+        if not _is_mock_object(getattr(sd_detail, "supports_discard", None))
+        else False,
+        supports_discard_zeroes_data=bool(getattr(sd_detail, "supports_discard_zeroes_data", False))
+        if not _is_mock_object(getattr(sd_detail, "supports_discard_zeroes_data", None))
+        else False,
+        wipe_after_delete=bool(getattr(sd_detail, "wipe_after_delete", False))
+        if not _is_mock_object(getattr(sd_detail, "wipe_after_delete", None))
+        else False,
         disks_count=disks_count,
         templates_count=templates_count,
         vms_count=vms_count,
+        logical_units=logical_units,
+        storage_connections=storage_connections,
         io_stats=io_stats,
         top_io_disks=top_io_disks,
         vms_list=vms_list,

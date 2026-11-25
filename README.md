@@ -571,73 +571,160 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 
 ---
 
-### Method 4: Windows Desktop & IDE Setup (Step-by-Step for Windows)
+### Method 4: Windows Desktop & IDE Setup (Step-by-Step for Windows & uv/uvx)
 
-This step-by-step guide is designed for Windows users running VS Code, Claude Desktop, Cline, or Roo Code natively on Windows 10/11.
+This step-by-step guide is designed for Windows users running VS Code, Claude Desktop, Cursor, Cline, or Roo Code on Windows 10/11.
 
-#### Step 1: Prerequisites
-1. **Python 3.10+:** Download and install from [python.org](https://www.python.org/downloads/).
-   > [!IMPORTANT]
-   > During installation on Windows, **check the box: "Add python.exe to PATH"**!
-2. **Git for Windows:** Download and install from [git-scm.com](https://git-scm.com/).
+#### Understanding Windows Requirements & Astral `uv` / `uvx`
 
-#### Step 2: Clone and Setup Virtual Environment in PowerShell
+> [!NOTE]
+> `ovirt-mcp` utilizes the official `ovirt-engine-sdk-python` library, which contains high-performance C extensions compiled against `libxml2` and `libcurl`. On Linux, these compile automatically via system package headers.
+>
+> On Windows, developers have **three fast, reliable deployment choices**:
+> 1. **Option A (Zero-Build via WSL2 with `uvx` - Recommended):** Invoke `uvx` through `wsl.exe`. Zero manual compilation or C++ build tools required on Windows!
+> 2. **Option B (Zero-Build via Docker Desktop):** Run the pre-built, non-root multi-arch container `ghcr.io/gerilab/ovirt-mcp:latest`.
+> 3. **Option C (Native Windows with `uv` or `venv`):** Run natively using Astral `uv` in Windows PowerShell (requires Microsoft Visual C++ Build Tools installed).
 
-Open **PowerShell** or **Windows Terminal** and run:
+---
 
-```powershell
-# 1. Clone the repository into your preferred folder (e.g. C:\Users\<Username>\Projects)
-cd C:\Users\$env:USERNAME
-git clone https://github.com/gerilab/ovirt-mcp.git
-cd ovirt-mcp
+#### Option A: Zero-Build via WSL2 with `uvx` (Fastest for Windows Clients)
 
-# 2. Create Python virtual environment
-python -m venv .venv
+If you have WSL2 installed (default on modern Windows 10/11), your Windows AI clients (Claude Desktop, VS Code, Cursor) can directly invoke `uvx` through `wsl.exe`. This completely bypasses Windows C++ compiler issues and runs in an isolated Linux micro-environment:
 
-# 3. Activate the virtual environment
-.\.venv\Scripts\Activate.ps1
-```
+1. **One-time preparation inside WSL (Ubuntu/Debian):**
+   ```bash
+   # Install uv inside WSL
+   curl -LsSf https://astral.sh/uv/install.sh | sh
 
-> [!TIP]
-> If PowerShell displays an `ExecutionPolicy` error when activating the venv, run this command once to permit local scripts:
-> ```powershell
-> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-> ```
+   # Install development headers for the SDK
+   sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libxml2-dev gcc
+   ```
 
-#### Step 3: Install ovirt-mcp
+2. **Configure Claude Desktop on Windows (`%APPDATA%\Claude\claude_desktop_config.json`):**
+   ```json
+   {
+     "mcpServers": {
+       "ovirt": {
+         "command": "wsl.exe",
+         "args": [
+           "uvx",
+           "--from",
+           "git+https://github.com/gerilab/ovirt-mcp.git",
+           "ovirt-mcp"
+         ],
+         "env": {
+           "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+           "OVIRT_USERNAME": "admin@ovirt@internal",
+           "OVIRT_PASSWORD": "YourSecurePasswordHere",
+           "OVIRT_INSECURE": "true",
+           "MCP_COMPACT_MODE": "true"
+         }
+       }
+     }
+   }
+   ```
 
-With the virtual environment active (`(.venv)` visible in prompt):
+3. **Configure VS Code (`.vscode/mcp.json`):**
+   ```json
+   {
+     "mcpServers": {
+       "ovirt": {
+         "command": "wsl.exe",
+         "args": [
+           "uvx",
+           "--from",
+           "git+https://github.com/gerilab/ovirt-mcp.git",
+           "ovirt-mcp"
+         ],
+         "env": {
+           "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
+           "OVIRT_USERNAME": "admin@ovirt@internal",
+           "OVIRT_PASSWORD": "YourSecurePasswordHere",
+           "OVIRT_INSECURE": "true",
+           "MCP_COMPACT_MODE": "true"
+         }
+       }
+     }
+   }
+   ```
 
-```powershell
-python -m pip install --upgrade pip
-pip install -e .
-```
+---
 
-*(Note for Windows developers: If building the native C extensions fails due to missing C++ compilers, use the pre-built Docker container `ghcr.io/gerilab/ovirt-mcp:latest` or run via WSL2).*
+#### Option B: Zero-Build via Docker Desktop on Windows
 
-#### Step 4: Windows Path Rules (Crucial!)
-
-In JSON files on Windows:
-* **Option A (Recommended):** Use standard forward slashes (`/`), which both Python and VS Code support on Windows:
-  ```json
-  "command": "C:/Users/YourName/ovirt-mcp/.venv/Scripts/python.exe"
-  ```
-* **Option B:** If using backslashes, escape each one with a double backslash (`\\`):
-  ```json
-  "command": "C:\\Users\\YourName\\ovirt-mcp\\.venv\\Scripts\\python.exe"
-  ```
-
-#### Step 5: Configure AI Clients on Windows
-
-##### For Claude Desktop on Windows:
-Open `%APPDATA%\Claude\claude_desktop_config.json` (accessible via `Win + R` &rarr; `%APPDATA%\Claude`):
+If you run Docker Desktop on Windows, no Python, C++ compilers, or repository clones are needed:
 
 ```json
 {
   "mcpServers": {
     "ovirt": {
-      "command": "C:/Users/<Username>/ovirt-mcp/.venv/Scripts/python.exe",
-      "args": ["-m", "ovirt_mcp.server"],
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e", "OVIRT_URL=https://olvm-engine.example.com/ovirt-engine/api",
+        "-e", "OVIRT_USERNAME=admin@ovirt@internal",
+        "-e", "OVIRT_PASSWORD=YourSecurePasswordHere",
+        "-e", "OVIRT_INSECURE=true",
+        "-e", "MCP_COMPACT_MODE=true",
+        "ghcr.io/gerilab/ovirt-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+---
+
+#### Option C: Native Windows with Astral `uv` or Standard Python `venv`
+
+If you want to run `ovirt-mcp` natively on Windows:
+
+1. **Install Astral `uv` on Windows:**
+   ```powershell
+   winget install --id=astral-sh.uv
+   # or via PowerShell installer:
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+
+2. **Clone and Create Virtual Environment with `uv`:**
+   ```powershell
+   # 1. Clone into your user folder
+   cd C:\Users\$env:USERNAME
+   git clone https://github.com/gerilab/ovirt-mcp.git
+   cd ovirt-mcp
+
+   # 2. Create high-speed virtual environment with uv
+   uv venv .venv
+   .\.venv\Scripts\Activate.ps1
+
+   # 3. Install ovirt-mcp in editable mode
+   uv pip install -e .
+   ```
+
+   *(Note: Native Windows compilation requires "Desktop development with C++" installed via Visual Studio Build Tools).*
+
+3. **Windows Path Rules in JSON Configurations:**
+   * **Recommended:** Use standard forward slashes (`/`), supported across Python, `uv`, and VS Code:
+     `"command": "C:/Users/YourName/ovirt-mcp/.venv/Scripts/ovirt-mcp.exe"`
+   * **Alternative:** Double-escaped backslashes:
+     `"command": "C:\\Users\\YourName\\ovirt-mcp\\.venv\\Scripts\\ovirt-mcp.exe"`
+
+4. **Configure AI Clients on Windows:**
+
+##### For Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ovirt": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "C:/Users/<Username>/ovirt-mcp",
+        "ovirt-mcp"
+      ],
       "env": {
         "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
         "OVIRT_USERNAME": "admin@ovirt@internal",
@@ -652,9 +739,7 @@ Open `%APPDATA%\Claude\claude_desktop_config.json` (accessible via `Win + R` &ra
 }
 ```
 
-##### For VS Code (Cline, Roo Code, Continue) on Windows:
-Create `.vscode/mcp.json` inside your cloned project root using the dynamic `${workspaceFolder}` variable:
-
+##### For VS Code with Native `python.exe` (`.vscode/mcp.json`):
 ```json
 {
   "mcpServers": {
@@ -673,6 +758,7 @@ Create `.vscode/mcp.json` inside your cloned project root using the dynamic `${w
     }
   }
 }
+```
 ```
 
 ---

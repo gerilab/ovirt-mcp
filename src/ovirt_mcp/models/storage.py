@@ -3,6 +3,71 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class StorageLogicalUnit(BaseModel):
+    """Technical details of a SAN or iSCSI Logical Unit (LUN)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str = Field(description="LUN identifier / device ID.")
+    serial: str | None = Field(
+        default=None,
+        description="Hardware serial number of the storage LUN / volume.",
+    )
+    vendor_id: str | None = Field(
+        default=None,
+        description="Storage hardware vendor (e.g. 'NETAPP', 'SYNOLOGY', 'DELL', 'QNAP', 'PURE').",
+    )
+    product_id: str | None = Field(
+        default=None,
+        description="Storage product model or array identifier.",
+    )
+    size_gb: float = Field(default=0.0, description="Capacity of the LUN in gigabytes.")
+    target: str | None = Field(default=None, description="iSCSI Target IQN.")
+    address: str | None = Field(
+        default=None, description="Storage controller IP address or hostname."
+    )
+    port: int | None = Field(
+        default=None, description="Storage target port (default 3260 for iSCSI)."
+    )
+    portal: str | None = Field(
+        default=None, description="iSCSI portal specification (address:port,tag)."
+    )
+    paths: int | None = Field(default=None, description="Number of active multipath storage paths.")
+    volume_group_id: str | None = Field(
+        default=None, description="LVM Volume Group ID containing the LUN."
+    )
+    status: str | None = Field(default=None, description="LUN operational status.")
+
+
+class StorageConnectionInfo(BaseModel):
+    """Storage server connection endpoint (NFS share, iSCSI portal, POSIX)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str | None = Field(default=None, description="UUID of the storage connection.")
+    address: str | None = Field(
+        default=None,
+        description="IP address or FQDN of the storage controller / NAS.",
+    )
+    path: str | None = Field(default=None, description="NFS exported path or local mount path.")
+    target: str | None = Field(default=None, description="iSCSI Target IQN.")
+    port: int | None = Field(
+        default=None, description="Connection port (e.g. 3260 for iSCSI, 2049 for NFS)."
+    )
+    portal: str | None = Field(default=None, description="Portal string.")
+    type: str | None = Field(
+        default=None, description="Connection protocol ('nfs', 'iscsi', 'posixfs', etc.)."
+    )
+    nfs_version: str | None = Field(
+        default=None,
+        description="NFS protocol version (e.g. 'v3', 'v4', 'v4_1', 'v4_2').",
+    )
+    nfs_timeo: int | None = Field(default=None, description="NFS timeo parameter.")
+    nfs_retrans: int | None = Field(default=None, description="NFS retrans parameter.")
+    mount_options: str | None = Field(default=None, description="NFS mount options.")
+    vfs_type: str | None = Field(default=None, description="Virtual File System type.")
+
+
 class StorageDomainSummary(BaseModel):
     """Summary of an oVirt / OLVM Storage Domain."""
 
@@ -35,10 +100,27 @@ class StorageDomainSummary(BaseModel):
         default=None, description="Metadata format version (e.g. 'v4', 'v5')"
     )
     address: str | None = Field(
-        default=None, description="IP address or hostname of storage server"
+        default=None, description="IP address or hostname of storage server / NAS"
     )
     path: str | None = Field(default=None, description="NFS share export path")
     target: str | None = Field(default=None, description="iSCSI Target IQN if block storage")
+    port: int | None = Field(default=None, description="Storage service port (e.g. 3260, 2049)")
+    portal: str | None = Field(default=None, description="iSCSI portal specification")
+    nfs_version: str | None = Field(
+        default=None, description="NFS protocol version if file-based domain"
+    )
+    mount_options: str | None = Field(default=None, description="NFS mount options")
+    volume_group_id: str | None = Field(
+        default=None, description="LVM Volume Group UUID for block storage"
+    )
+    lun_serials: list[str] = Field(
+        default_factory=list,
+        description="Hardware serial numbers of underlying SAN/iSCSI LUNs",
+    )
+    lun_count: int = Field(
+        default=0,
+        description="Count of underlying SAN/iSCSI LUNs",
+    )
     data_centers: list[str] = Field(
         default_factory=list,
         description="Names of Data Centers this storage domain is attached to",
@@ -91,7 +173,7 @@ class StorageDomainTopDiskIo(BaseModel):
 
 
 class StorageDomainDetail(StorageDomainSummary):
-    """Deep configuration and telemetry for an oVirt / OLVM Storage Domain."""
+    """Deep configuration, SAN/NAS hardware serials, and telemetry for an oVirt / OLVM Storage Domain."""
 
     description: str | None = Field(default=None, description="Description of the storage domain")
     warning_low_space_indicator: int | None = Field(
@@ -112,6 +194,17 @@ class StorageDomainDetail(StorageDomainSummary):
     disks_count: int = Field(default=0, description="Number of virtual disks stored in domain")
     templates_count: int = Field(default=0, description="Number of VM templates stored in domain")
     vms_count: int = Field(default=0, description="Number of VMs with lease or OVF store in domain")
+
+    # SAN / NAS Hardware Identification
+    logical_units: list[StorageLogicalUnit] = Field(
+        default_factory=list,
+        description="Detailed SAN/iSCSI LUN properties (serial number, vendor, product, capacity, paths)",
+    )
+    storage_connections: list[StorageConnectionInfo] = Field(
+        default_factory=list,
+        description="Underlying NAS / iSCSI storage connection endpoints",
+    )
+
     io_stats: StorageDomainIoStats | None = Field(
         default=None, description="Aggregate real-time I/O telemetry across stored disks"
     )

@@ -15,6 +15,9 @@ from .backup import (
 )
 from .cluster import (
     ClusterDetail,
+    ClusterFencingPolicy,
+    ClusterMigrationPolicy,
+    ClusterSchedulingPolicy,
     ClusterSummary,
 )
 from .compute import (
@@ -87,9 +90,13 @@ from .quota import (
     QuotaSummary,
 )
 from .storage import (
+    StorageConnectionInfo,
     StorageDomainDetail,
+    StorageDomainIoStats,
     StorageDomainResult,
     StorageDomainSummary,
+    StorageDomainTopDiskIo,
+    StorageLogicalUnit,
 )
 from .tag import (
     TagAssignmentResult,
@@ -148,6 +155,9 @@ __all__ = [
     "AffinityRuleConfig",
     "BackupOperationResult",
     "ClusterDetail",
+    "ClusterFencingPolicy",
+    "ClusterMigrationPolicy",
+    "ClusterSchedulingPolicy",
     "ClusterSummary",
     "DataCenterDetail",
     "DataCenterSummary",
@@ -189,9 +199,13 @@ __all__ = [
     "QuotaSummary",
     "RoleResult",
     "RoleSummary",
+    "StorageConnectionInfo",
     "StorageDomainDetail",
+    "StorageDomainIoStats",
     "StorageDomainResult",
     "StorageDomainSummary",
+    "StorageDomainTopDiskIo",
+    "StorageLogicalUnit",
     "SystemEvent",
     "TagAssignmentResult",
     "TagResult",

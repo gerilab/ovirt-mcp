@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-11-25
+
+### Added
+- **Detailed Cluster Live Migration & Scheduling Policies**: Extended `ovirt_cluster_get` with exhaustive technical policies:
+  - `migration`: Full VM live migration and convergence settings (`auto_converge`, `compressed`, `encrypted`, `bandwidth_assignment_method`, `bandwidth_custom_value`, `parallel_migrations_policy`, `custom_parallel_migrations`, `policy_id`, `policy_name`).
+  - `scheduling_policy`: Granular workload placement and scheduling algorithm details (`id`, `name`, `description`, and algorithm threshold parameters in `properties`).
+  - `fencing_policy`: Safety fencing bypass rules (`skip_if_connectivity_broken`, `skip_if_sd_active`, `skip_if_gluster_bricks_up`, `skip_if_gluster_quorum_not_met`).
+  - Additional cluster attributes: `management_network_name`, `firewall_type`, `serial_number_policy`, `error_handling`, and administrator `comment`.
+- **Storage Domain Hardware LUN Serials & NAS Connection Endpoints**: Extended `ovirt_storage_domain_get` and `ovirt_storage_domain_list` with deep hardware identifiers:
+  - `lun_serials`: List of hardware serial numbers for underlying iSCSI / SAN LUNs for immediate discovery and inventory correlation.
+  - `logical_units`: Full SAN/iSCSI LUN records (`id`, `serial`, `vendor_id`, `product_id`, `size_gb`, `target`, `address`, `port`, `portal`, `paths`, `volume_group_id`, `status`).
+  - `storage_connections`: Active storage connection endpoints (`address`, `path`, `target`, `port`, `portal`, `type`, `nfs_version`, `mount_options`, `vfs_type`).
+  - Top-level storage connection metadata: `port`, `portal`, `nfs_version`, `mount_options`, and `volume_group_id`.
+
+### Documentation & Developer Experience
+- **Windows Deployment & Astral `uv` / `uvx` Guide**: Expanded `README.md` (Method 4) with clear, step-by-step guidance on running `ovirt-mcp` on Windows:
+  - Option A: Zero-build execution via WSL2 with `uvx` (recommended for Windows clients to avoid C++ build requirements).
+  - Option B: Zero-build execution via Docker Desktop.
+  - Option C: Native Windows PowerShell setup with Astral `uv` and path rules.
+- **Updated Catalog Specifications**: Documented new cluster and storage domain fields in `TOOLS.md`.
+
 ## [0.8.3] - 2026-11-20
 
 ### Added
