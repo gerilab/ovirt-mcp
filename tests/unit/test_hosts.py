@@ -490,7 +490,7 @@ def test_list_host_nics_success() -> None:
     mock_nic = MagicMock()
     mock_nic.id = "nic-1"
     mock_nic.name = "eth0"
-    mock_nic.mac.address = "00:50:56:91:69:08"
+    mock_nic.mac.address = "00:50:56:00:11:22"
     mock_nic.speed = 10000000000  # 10 Gbps
     mock_nic.status.value = "up"
     mock_nic.network = None
@@ -509,7 +509,7 @@ def test_list_host_nics_success() -> None:
     assert isinstance(n, HostNicInfo)
     assert n.name == "eth0"
     assert n.speed_mbps == 10000
-    assert n.mac_address == "00:50:56:91:69:08"
+    assert n.mac_address == "00:50:56:00:11:22"
     assert "192.0.2.12" in n.ip_addresses
 
 
@@ -519,7 +519,7 @@ def test_list_host_nics_with_lldp_success() -> None:
     mock_nic = MagicMock()
     mock_nic.id = "nic-1"
     mock_nic.name = "eth0"
-    mock_nic.mac.address = "00:50:56:91:69:08"
+    mock_nic.mac.address = "00:50:56:00:11:22"
     mock_nic.speed = 10000000000
     mock_nic.status.value = "up"
     mock_nic.network = None

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ovirt-mcp"
-version = "0.8.6"
+version = "0.8.7"
 description = "Model Context Protocol (MCP) server for oVirt and Oracle Linux Virtualization Manager (OLVM)"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -113,3 +113,4 @@ pythonpath = ["src"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-ra -q --strict-markers"
+asyncio_default_fixture_loop_scope = "function"

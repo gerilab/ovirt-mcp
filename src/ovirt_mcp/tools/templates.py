@@ -206,6 +206,7 @@ def create_template_from_vm_tool(
     description: str | None = None,
     wait: bool = True,
     timeout: int = 300,
+    dry_run: bool = False,
 ) -> TemplateResult:
     """Create a new reusable template / golden image from an existing virtual machine.
 
@@ -215,6 +216,7 @@ def create_template_from_vm_tool(
         description: Optional descriptive text.
         wait: Whether to synchronously wait until template provisioning completes.
         timeout: Maximum wait time in seconds.
+        dry_run: If True, validates VM power state and name availability without creating the template.
 
     Returns:
         TemplateResult with creation outcome.
@@ -248,6 +250,22 @@ def create_template_from_vm_tool(
         raise OvirtValidationError(
             f"A template named '{template_name}' already exists in the environment.",
             details={"template_name": template_name, "existing_id": str(existing[0].id)},
+        )
+
+    if dry_run:
+        audit_log(
+            "ovirt_template_create_from_vm",
+            template_name,
+            {"vm_name": str(vm.name), "vm_id": str(vm.id), "dry_run": True},
+            "SUCCESS",
+        )
+        return TemplateResult(
+            success=True,
+            template_id="dry-run-preview-id",
+            template_name=template_name,
+            action="create",
+            dry_run=True,
+            message=f"[DRY RUN] Template '{template_name}' would be created from VM '{vm.name}'. No changes were made.",
         )
 
     template_spec = sdk_types.Template(
@@ -309,6 +327,7 @@ def delete_template_tool(
     confirm: bool = False,
     wait: bool = True,
     timeout: int = 180,
+    dry_run: bool = False,
 ) -> TemplateResult:
     """Delete an oVirt / OLVM template from the environment.
 
@@ -320,12 +339,15 @@ def delete_template_tool(
         confirm: Confirmation flag required in safe-mode.
         wait: Whether to synchronously wait for removal to complete.
         timeout: Maximum wait time in seconds.
+        dry_run: If True, validates template deletion criteria without removing the template.
 
     Returns:
         TemplateResult with removal outcome.
     """
-    require_destructive_confirmation("ovirt_template_delete", confirm)
-    require_mutation_allowed("ovirt_template_delete")
+    if not dry_run:
+        require_destructive_confirmation("ovirt_template_delete", confirm)
+    else:
+        require_mutation_allowed("ovirt_template_delete")
 
     client = get_client()
     conn = client.get_connection()
@@ -341,6 +363,22 @@ def delete_template_tool(
             f"Cannot delete system template '{t_name}' ({t_id}). "
             "The Blank template is permanently reserved and protected by oVirt / OLVM.",
             details={"template_id": t_id, "template_name": t_name},
+        )
+
+    if dry_run:
+        audit_log(
+            "ovirt_template_delete",
+            t_name,
+            {"template_id": t_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return TemplateResult(
+            success=True,
+            template_id=t_id,
+            template_name=t_name,
+            action="delete",
+            dry_run=True,
+            message=f"[DRY RUN] Template '{t_name}' (UUID: {t_id}) would be deleted. No changes were made.",
         )
 
     t_inst = t_svc.template_service(t_id)

@@ -44,14 +44,33 @@ pki/
 # Testing and Type Checking
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+coverage.xml
+nosetests.xml
+junit.xml
 .mypy_cache/
+.dmypy.json
+dmypy.json
 .ruff_cache/
+
+# Logs and Audit Files
+*.log
+*.jsonl
+
+# Temporary and Scratch Files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
 
 # IDE & Editor files
 .idea/
 .vscode/
-*.swp
-*.swo
-*~
+
+# OS-generated files
 .DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini

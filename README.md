@@ -120,6 +120,21 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
+### Step 4: Run Pre-Flight Diagnostics (`ovirt-mcp --check`)
+
+Before launching `ovirt-mcp` with an AI client, verify your environment, credentials, and API connection using the built-in diagnostic check:
+
+```bash
+ovirt-mcp --check
+# or: ovirt-mcp check
+```
+
+The pre-flight diagnostic verifies:
+1. `.env` and system environment variable loading.
+2. Engine REST API reachability and TLS/SSL certificate handshake.
+3. AAA user authentication and session negotiation.
+4. Engine version compatibility and reports the count of successfully registered MCP tools (137 tools).
+
 ---
 
 ## Configuration Reference (`.env` & `mcp.json`)
@@ -344,9 +359,14 @@ To prevent accidental hypervisor outages from hallucinatory or unintended agent 
 
 #### Dry-Run Execution Simulation (`dry_run=True`)
 
-For operational and lifecycle tools, agents can pass `dry_run=True` to simulate and preview actions before executing them:
-- **Supported Tools:** `ovirt_vm_start`, `ovirt_vm_stop`, `ovirt_vm_shutdown`, `ovirt_vm_reboot`, `ovirt_vm_delete`, `ovirt_vm_migrate`, `ovirt_vm_snapshot_create`, `ovirt_host_maintenance`, `ovirt_host_activate`, `ovirt_host_restart`.
-- **Pre-flight Validation:** Verifies host states, cluster constraints, pinned VMs, IPMI fencing configuration, and power states.
+For operational, lifecycle, storage, and template tools, agents can pass `dry_run=True` to simulate and preview actions before executing them:
+- **Supported Tools:**
+  - **VM Lifecycle & Management:** `ovirt_vm_start`, `ovirt_vm_stop`, `ovirt_vm_shutdown`, `ovirt_vm_reboot`, `ovirt_vm_delete`, `ovirt_vm_migrate`.
+  - **VM Snapshots:** `ovirt_vm_snapshot_create`, `ovirt_vm_snapshot_restore`, `ovirt_vm_snapshot_delete`.
+  - **Virtual Disks:** `ovirt_disk_resize`, `ovirt_disk_move`, `ovirt_disk_sparsify`.
+  - **Templates:** `ovirt_template_create_from_vm`, `ovirt_template_delete`.
+  - **Hypervisor Hosts:** `ovirt_host_maintenance`, `ovirt_host_activate`, `ovirt_host_restart`.
+- **Pre-flight Validation:** Verifies host states, cluster constraints, pinned VMs, IPMI fencing configuration, and storage domain requirements.
 - **Bypasses Safe Mode Prompt:** Allows autonomous agents to preview projected outcomes without triggering destructive confirmation gates.
 - **Zero State Impact:** No changes are applied to the hypervisor cluster; returns `dry_run=True` with a detailed outcome description.
 
@@ -642,7 +662,7 @@ If you have WSL2 installed (default on modern Windows 10/11), your Windows AI cl
          ],
          "env": {
            "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
-           "OVIRT_USERNAME": "admin@ovirt@internal",
+           "OVIRT_USERNAME": "admin@internal",
            "OVIRT_PASSWORD": "YourSecurePasswordHere",
            "OVIRT_INSECURE": "true",
            "MCP_COMPACT_MODE": "true"
@@ -666,7 +686,7 @@ If you have WSL2 installed (default on modern Windows 10/11), your Windows AI cl
          ],
          "env": {
            "OVIRT_URL": "https://olvm-engine.example.com/ovirt-engine/api",
-           "OVIRT_USERNAME": "admin@ovirt@internal",
+           "OVIRT_USERNAME": "admin@internal",
            "OVIRT_PASSWORD": "YourSecurePasswordHere",
            "OVIRT_INSECURE": "true",
            "MCP_COMPACT_MODE": "true"

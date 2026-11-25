@@ -129,7 +129,7 @@ def test_delete_logical_network_ovirtmgmt_guard() -> None:
 
 def test_delete_logical_network_safe_mode_guard() -> None:
     mock_cfg = OvirtConfig(
-        ovirt_url="https://olvm.local",
+        ovirt_url="https://olvm.example.com",
         ovirt_username="admin@internal",
         ovirt_password=SecretStr("pwd"),
         mcp_safe_mode=True,

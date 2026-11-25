@@ -381,6 +381,30 @@ def test_resize_disk_success(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_disk_svc.update.assert_called_once()
 
 
+def test_resize_disk_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, _, mock_disks_service = _setup_mock_vm_and_disks()
+    mock_disk = MagicMock()
+    mock_disk.name = "database_disk"
+    mock_disk.provisioned_size = 20 * (1024**3)
+    mock_disk_svc = mock_disks_service.disk_service("disk-1")
+    mock_disk_svc.get.return_value = mock_disk
+
+    with patch("ovirt_mcp.tools.disks.get_client", return_value=mock_client):
+        res = resize_disk_tool("disk-1", size_gb=35, confirm=True, dry_run=True)
+
+    assert isinstance(res, DiskResizeResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert res.old_size_gb == 20.0
+    assert res.new_size_gb == 35.0
+    assert "[DRY RUN]" in res.message
+    mock_disk_svc.update.assert_not_called()
+
+
 # ── LIST DISKS TESTS ──────────────────────────────────────────────────────────
 
 
@@ -461,6 +485,53 @@ def test_move_disk_success() -> None:
     assert res.source_storage_domain == "Data"
     assert res.target_storage_domain == "Data3"
     mock_disk_svc.move.assert_called_once()
+
+
+def test_move_disk_dry_run() -> None:
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_sys = MagicMock()
+    mock_disks_svc = MagicMock()
+    mock_disk_svc = MagicMock()
+    mock_sds_svc = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_conn.system_service.return_value = mock_sys
+    mock_sys.disks_service.return_value = mock_disks_svc
+    mock_sys.storage_domains_service.return_value = mock_sds_svc
+    mock_disks_svc.disk_service.return_value = mock_disk_svc
+
+    mock_src_sd = MagicMock()
+    mock_src_sd.id = "sd-src-1"
+    mock_src_sd.name = "Data"
+
+    mock_target_sd = MagicMock()
+    mock_target_sd.id = "sd-tgt-2"
+    mock_target_sd.name = "Data3"
+
+    mock_disk = MagicMock()
+    mock_disk.id = "disk-uuid-1"
+    mock_disk.name = "vm_disk_1"
+    mock_disk.status = "ok"
+    mock_disk.storage_domains = [mock_src_sd]
+
+    def _find_resource(svc: MagicMock, ident: str, res_type: str) -> MagicMock:
+        if res_type == "disk":
+            return mock_disk
+        return mock_target_sd
+
+    mock_client.find_resource_by_id_or_name.side_effect = _find_resource
+    mock_disk_svc.get.return_value = mock_disk
+
+    with patch("ovirt_mcp.tools.disks.get_client", return_value=mock_client):
+        res = move_disk_tool("disk-uuid-1", "Data3", dry_run=True)
+
+    assert isinstance(res, DiskOperationResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert res.action == "move"
+    assert "[DRY RUN]" in res.message
+    mock_disk_svc.move.assert_not_called()
 
 
 def test_move_disk_already_on_target() -> None:
@@ -604,6 +675,38 @@ def test_sparsify_disk_success() -> None:
     assert res.success is True
     assert res.action == "sparsify"
     mock_disk_svc.sparsify.assert_called_once()
+
+
+def test_sparsify_disk_dry_run() -> None:
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_sys = MagicMock()
+    mock_disks_svc = MagicMock()
+    mock_disk_svc = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_conn.system_service.return_value = mock_sys
+    mock_sys.disks_service.return_value = mock_disks_svc
+    mock_disks_svc.disk_service.return_value = mock_disk_svc
+
+    mock_disk = MagicMock()
+    mock_disk.id = "disk-uuid-raw"
+    mock_disk.name = "raw_disk"
+    mock_disk.format = "raw"
+    mock_disk.status = "ok"
+
+    mock_client.find_resource_by_id_or_name.return_value = mock_disk
+    mock_disk_svc.get.return_value = mock_disk
+
+    with patch("ovirt_mcp.tools.disks.get_client", return_value=mock_client):
+        res = sparsify_disk_tool("raw_disk", dry_run=True)
+
+    assert isinstance(res, DiskOperationResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert res.action == "sparsify"
+    assert "[DRY RUN]" in res.message
+    mock_disk_svc.sparsify.assert_not_called()
 
 
 def test_sparsify_disk_cow_format_guard() -> None:

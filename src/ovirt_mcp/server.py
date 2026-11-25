@@ -751,7 +751,8 @@ def ovirt_vm_snapshot_create(
         "Restore / revert a virtual machine to a specified snapshot state. "
         "Requires VM to be in DOWN status before reverting. "
         "Optionally restore saved guest RAM memory state (restore_memory=True, requires persist_memory=True when created). "
-        "Destructive action: requires confirm=True when MCP_SAFE_MODE=true."
+        "Destructive action: requires confirm=True when MCP_SAFE_MODE=true. "
+        "Set dry_run=True to simulate without reverting the snapshot."
     ),
 )
 def ovirt_vm_snapshot_restore(
@@ -761,6 +762,7 @@ def ovirt_vm_snapshot_restore(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 180,
+    dry_run: bool = False,
 ) -> VmSnapshotResult:
     """Restore a VM to a specified snapshot."""
     return restore_vm_snapshot_tool(
@@ -770,6 +772,7 @@ def ovirt_vm_snapshot_restore(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -852,7 +855,8 @@ def ovirt_vm_snapshot_undo(
     description=(
         "Delete a snapshot and consolidate delta disks back into the parent disk image. "
         "Destructive action: requires confirm=True when MCP_SAFE_MODE=true. "
-        "Set wait=True to block until snapshot removal and disk consolidation completes."
+        "Set wait=True to block until snapshot removal and disk consolidation completes. "
+        "Set dry_run=True to simulate snapshot deletion without removing it."
     ),
 )
 def ovirt_vm_snapshot_delete(
@@ -861,6 +865,7 @@ def ovirt_vm_snapshot_delete(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 180,
+    dry_run: bool = False,
 ) -> VmSnapshotResult:
     """Delete a snapshot and consolidate disk deltas."""
     return delete_vm_snapshot_tool(
@@ -869,6 +874,7 @@ def ovirt_vm_snapshot_delete(
         confirm=confirm,
         wait=wait,
         timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
     )
 
 
@@ -1053,19 +1059,22 @@ def ovirt_disk_create(
     description=(
         "Expand the provisioned capacity of a virtual disk to a larger size in gigabytes. "
         "Note: Virtual disks can only be expanded; shrinking is not supported to protect data integrity. "
-        "Destructive/modifying action in Safe Mode: requires confirm=True when MCP_SAFE_MODE=true."
+        "Destructive/modifying action in Safe Mode: requires confirm=True when MCP_SAFE_MODE=true. "
+        "Set dry_run=True to preview the resize operation without modifying disk capacity."
     ),
 )
 def ovirt_disk_resize(
     disk_id: str,
     size_gb: int,
     confirm: bool = False,
+    dry_run: bool = False,
 ) -> DiskResizeResult:
     """Expand the provisioned capacity of a virtual disk."""
     return resize_disk_tool(
         disk_id=disk_id,
         size_gb=size_gb,
         confirm=confirm,
+        dry_run=dry_run,
     )
 
 
@@ -1074,7 +1083,8 @@ def ovirt_disk_resize(
     description=(
         "Move a virtual disk to a different Storage Domain (Storage vMotion / offline disk migration). "
         "Safely migrates the underlying disk image between active storage domains. "
-        "Set wait=True to block until migration completes."
+        "Set wait=True to block until migration completes. "
+        "Set dry_run=True to validate the disk migration without moving data."
     ),
 )
 def ovirt_disk_move(
@@ -1082,6 +1092,7 @@ def ovirt_disk_move(
     storage_domain_name_or_id: str,
     wait: bool = True,
     timeout: int = 300,
+    dry_run: bool = False,
 ) -> DiskOperationResult:
     """Move a virtual disk to a different Storage Domain."""
     return move_disk_tool(
@@ -1089,6 +1100,7 @@ def ovirt_disk_move(
         storage_domain_name_or_id=storage_domain_name_or_id,
         wait=wait,
         timeout=timeout,
+        dry_run=dry_run,
     )
 
 
@@ -1122,19 +1134,22 @@ def ovirt_disk_copy(
     description=(
         "Reclaim zeroed free space from a thin-provisioned (COW) virtual disk (fstrim / sparsification). "
         "Compacts the disk image on the underlying storage domain. "
-        "Set wait=True to wait for sparsification to complete."
+        "Set wait=True to wait for sparsification to complete. "
+        "Set dry_run=True to validate disk sparsification without modifying storage."
     ),
 )
 def ovirt_disk_sparsify(
     disk_name_or_id: str,
     wait: bool = True,
     timeout: int = 300,
+    dry_run: bool = False,
 ) -> DiskOperationResult:
     """Reclaim zeroed space from a thin-provisioned virtual disk."""
     return sparsify_disk_tool(
         disk_name_or_id=disk_name_or_id,
         wait=wait,
         timeout=timeout,
+        dry_run=dry_run,
     )
 
 
@@ -2063,7 +2078,8 @@ def ovirt_template_get(name_or_id: str) -> TemplateDetail:
     description=(
         "Create a new reusable template / golden image from an existing virtual machine. "
         "The source virtual machine must be powered off (down) to capture disk snapshots. "
-        "Set wait=True to block until template disk creation finishes."
+        "Set wait=True to block until template disk creation finishes. "
+        "Set dry_run=True to validate template creation without generating the template."
     ),
 )
 def ovirt_template_create_from_vm(
@@ -2072,6 +2088,7 @@ def ovirt_template_create_from_vm(
     description: str | None = None,
     wait: bool = True,
     timeout: int = 300,
+    dry_run: bool = False,
 ) -> TemplateResult:
     """Create a new template from an existing VM."""
     return create_template_from_vm_tool(
@@ -2080,6 +2097,7 @@ def ovirt_template_create_from_vm(
         description=description,
         wait=wait,
         timeout=timeout,
+        dry_run=dry_run,
     )
 
 
@@ -2088,7 +2106,8 @@ def ovirt_template_create_from_vm(
     description=(
         "Delete an oVirt / OLVM template from the environment. "
         "Protected by safe-mode confirmation (confirm=True). "
-        "The system Blank template is permanently protected from deletion."
+        "The system Blank template is permanently protected from deletion. "
+        "Set dry_run=True to validate template deletion without removing the template."
     ),
 )
 def ovirt_template_delete(
@@ -2096,6 +2115,7 @@ def ovirt_template_delete(
     confirm: bool = False,
     wait: bool = True,
     timeout: int = 180,
+    dry_run: bool = False,
 ) -> TemplateResult:
     """Delete a template from the environment."""
     return delete_template_tool(
@@ -2103,6 +2123,7 @@ def ovirt_template_delete(
         confirm=confirm,
         wait=wait,
         timeout=timeout,
+        dry_run=dry_run,
     )
 
 
@@ -3071,8 +3092,48 @@ def ovirt_job_get(
     return get_job_tool(job_id=job_id)
 
 
+def check_connection_cli() -> int:
+    """Run an interactive pre-flight health check against the configured oVirt engine."""
+    import sys
+
+    config = get_config()
+    print("=" * 60)
+    print("oVirt / OLVM MCP Pre-Flight Health Check")
+    print("=" * 60)
+    print(f"Target Engine URL: {config.sanitized_url()}")
+    print(f"Username:          {config.ovirt_username}")
+    print(f"Insecure TLS:      {config.ovirt_insecure}")
+    print(f"CA File:           {config.ovirt_ca_file or 'Auto-download / System'}")
+    print(f"Safe Mode:         {config.mcp_safe_mode}")
+    print(f"Read-Only Mode:    {config.mcp_read_only}")
+    print(f"Audit Log File:    {config.ovirt_audit_log_file or 'Disabled'}")
+    print("-" * 60)
+    print("Testing connection to engine...")
+
+    client = get_client()
+    try:
+        status_info = client.test_connection()
+        print("[OK] Connection SUCCESSFUL!")
+        print(f"  Product: {status_info.get('product_name', 'oVirt Engine')}")
+        print(f"  Version: {status_info.get('version', 'Unknown')}")
+        print(f"  API URL: {status_info.get('url', config.sanitized_url())}")
+        print("-" * 60)
+        tools_count = len(mcp._tool_manager._tools)
+        print(f"[OK] MCP Server Ready: {tools_count} enterprise virtualization tools registered.")
+        return 0
+    except Exception as exc:
+        print(f"[FAILED] Connection FAILED: {exc}", file=sys.stderr)
+        return 1
+
+
 def main() -> None:
-    """Run the MCP server over standard I/O (stdio) or network HTTP/SSE transport."""
+    """Run the MCP server over standard I/O (stdio), network HTTP/SSE transport, or pre-flight check."""
+    import sys
+
+    args = sys.argv[1:]
+    if any(arg in ("--check", "check", "--health", "health") for arg in args):
+        sys.exit(check_connection_cli())
+
     config = get_config()
     transport = config.mcp_transport.strip().lower()
 

@@ -121,6 +121,10 @@ class DiskResizeResult(BaseModel):
     disk_name: str = Field(description="Name of the resized disk")
     old_size_gb: float = Field(description="Previous provisioned size in GB")
     new_size_gb: float = Field(description="New provisioned size in GB")
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this action was simulated in dry_run mode without execution",
+    )
     message: str = Field(description="Human-readable outcome description")
 
 
@@ -136,5 +140,9 @@ class DiskOperationResult(BaseModel):
     )
     target_storage_domain: str | None = Field(
         default=None, description="Target storage domain for move or copy"
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this action was simulated in dry_run mode without execution",
     )
     message: str = Field(description="Human-readable outcome description")

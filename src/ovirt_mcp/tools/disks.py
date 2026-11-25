@@ -673,6 +673,7 @@ def resize_disk_tool(
     disk_id: str,
     size_gb: int,
     confirm: bool = False,
+    dry_run: bool = False,
 ) -> DiskResizeResult:
     """Expand / resize the provisioned capacity of a virtual disk.
 
@@ -684,13 +685,17 @@ def resize_disk_tool(
         disk_id: UUID of the virtual disk to resize.
         size_gb: New total provisioned capacity in gigabytes (must be strictly larger than current size).
         confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
+        dry_run: If True, validates target size without extending the disk.
 
     Returns:
         DiskResizeResult with old and new capacities.
     """
-    require_destructive_confirmation(
-        f"resize virtual disk '{disk_id}' to {size_gb}GB", confirmed=confirm
-    )
+    if not dry_run:
+        require_destructive_confirmation(
+            f"resize virtual disk '{disk_id}' to {size_gb}GB", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("resize_disk")
 
     client = get_client()
     conn = client.get_connection()
@@ -719,6 +724,28 @@ def resize_disk_tool(
                 "current_size_gb": current_gb,
                 "requested_size_gb": size_gb,
             },
+        )
+
+    if dry_run:
+        audit_log(
+            "resize_disk",
+            disk_name,
+            {
+                "disk_id": disk_id,
+                "current_size_gb": current_gb,
+                "new_size_gb": size_gb,
+                "dry_run": True,
+            },
+            "SUCCESS",
+        )
+        return DiskResizeResult(
+            success=True,
+            disk_id=disk_id,
+            disk_name=disk_name,
+            old_size_gb=current_gb,
+            new_size_gb=float(size_gb),
+            dry_run=True,
+            message=f"[DRY RUN] Virtual disk '{disk_name}' ({disk_id}) would be resized from {current_gb}GB to {size_gb}GB. No changes were made.",
         )
 
     try:
@@ -867,6 +894,7 @@ def move_disk_tool(
     storage_domain_name_or_id: str,
     wait: bool = True,
     timeout: int = 300,
+    dry_run: bool = False,
 ) -> DiskOperationResult:
     """Move a virtual disk to a different Storage Domain (live or offline storage migration).
 
@@ -875,6 +903,7 @@ def move_disk_tool(
         storage_domain_name_or_id: Target Storage Domain name or UUID.
         wait: Whether to synchronously wait for the migration to complete.
         timeout: Maximum time in seconds to wait for migration.
+        dry_run: If True, validates storage domain target without initiating migration.
 
     Returns:
         DiskOperationResult with migration outcome.
@@ -919,6 +948,29 @@ def move_disk_tool(
         raise OvirtValidationError(
             f"Cannot move disk '{disk.name}': disk is currently locked by another operation.",
             details={"disk_id": str(disk.id), "status": cur_status},
+        )
+
+    if dry_run:
+        audit_log(
+            "ovirt_disk_move",
+            str(disk.name),
+            {
+                "disk_id": str(disk.id),
+                "source_storage_domain": src_sd_name,
+                "target_storage_domain": str(target_sd.name),
+                "dry_run": True,
+            },
+            "SUCCESS",
+        )
+        return DiskOperationResult(
+            success=True,
+            disk_id=str(disk.id),
+            disk_name=str(disk.name),
+            action="move",
+            source_storage_domain=src_sd_name,
+            target_storage_domain=str(target_sd.name),
+            dry_run=True,
+            message=f"[DRY RUN] Disk '{disk.name}' would be moved from '{src_sd_name}' to '{target_sd.name}'. No changes were made.",
         )
 
     disk_svc = disks_svc.disk_service(disk.id)
@@ -1060,6 +1112,7 @@ def sparsify_disk_tool(
     disk_name_or_id: str,
     wait: bool = True,
     timeout: int = 300,
+    dry_run: bool = False,
 ) -> DiskOperationResult:
     """Reclaim zeroed blocks from a thin-provisioned virtual disk (fstrim / sparsify).
 
@@ -1067,6 +1120,7 @@ def sparsify_disk_tool(
         disk_name_or_id: Name or UUID of the virtual disk to sparsify.
         wait: Whether to synchronously wait for the operation to complete.
         timeout: Maximum wait time in seconds.
+        dry_run: If True, validates disk eligibility (raw format) without sparsifying.
 
     Returns:
         DiskOperationResult with sparsify outcome.
@@ -1087,6 +1141,22 @@ def sparsify_disk_tool(
             f"Cannot sparsify disk '{disk.name}': disk format is '{disk_fmt}'. "
             "oVirt / OLVM sparsification is only supported for raw-formatted virtual disks.",
             details={"disk_id": str(disk.id), "format": disk_fmt},
+        )
+
+    if dry_run:
+        audit_log(
+            "ovirt_disk_sparsify",
+            str(disk.name),
+            {"disk_id": str(disk.id), "format": disk_fmt, "dry_run": True},
+            "SUCCESS",
+        )
+        return DiskOperationResult(
+            success=True,
+            disk_id=str(disk.id),
+            disk_name=str(disk.name),
+            action="sparsify",
+            dry_run=True,
+            message=f"[DRY RUN] Virtual disk '{disk.name}' (format: {disk_fmt}) would be sparsified to reclaim zeroed blocks. No changes were made.",
         )
 
     disk_svc = disks_svc.disk_service(disk.id)

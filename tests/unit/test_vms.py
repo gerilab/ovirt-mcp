@@ -21,7 +21,7 @@ def test_extract_vm_summary() -> None:
     mock_vm.cluster = mock_cluster
 
     mock_host = MagicMock()
-    mock_host.name = "node-01.corp"
+    mock_host.name = "node-01.example.com"
     mock_vm.host = mock_host
 
     mock_vm.memory = 8 * 1024 * 1024 * 1024  # 8 GB in bytes
@@ -40,7 +40,7 @@ def test_extract_vm_summary() -> None:
     mock_dev.ips = [mock_ip]
     mock_vm.guest_reported_devices = [mock_dev]
 
-    mock_vm.fqdn = "web-prod-01.corp.internal"
+    mock_vm.fqdn = "web-prod-01.example.com"
     mock_vm.os.type = "rhel_8x64"
     mock_vm.high_availability.enabled = True
     mock_vm.description = "Production Web Server"
@@ -51,11 +51,11 @@ def test_extract_vm_summary() -> None:
     assert summary.name == "web-prod-01"
     assert summary.status == "up"
     assert summary.cluster_name == "Production-Cluster"
-    assert summary.host_name == "node-01.corp"
+    assert summary.host_name == "node-01.example.com"
     assert summary.memory_mb == 8192
     assert summary.cpu_cores == 8
     assert summary.ip_addresses == ["10.0.0.50"]
-    assert summary.fqdn == "web-prod-01.corp.internal"
+    assert summary.fqdn == "web-prod-01.example.com"
     assert summary.os_type == "rhel_8x64"
     assert summary.ha_enabled is True
     assert summary.description == "Production Web Server"
@@ -157,7 +157,7 @@ def test_get_vm_tool() -> None:
     mock_vm.guest_operating_system.kernel.version = "4.18.0-425.el8.x86_64"
     mock_vm.guest_operating_system.architecture = "x86_64"
     mock_vm.guest_time_zone.name = "Europe/Budapest"
-    mock_vm.fqdn = "db-server.prod.corp"
+    mock_vm.fqdn = "db-server.example.com"
 
     # Hardware & Security
     mock_vm.bios.type.value = "q35_ovmf"
@@ -314,7 +314,7 @@ def test_get_vm_tool_compact() -> None:
     mock_vm.os.type = "rhel_9x64"
     mock_vm.high_availability.enabled = False
     mock_vm.description = "Lightweight node"
-    mock_vm.fqdn = "light-web.local"
+    mock_vm.fqdn = "light-web.example.com"
     mock_vm.guest_reported_devices = []
 
     mock_att = MagicMock()
@@ -358,7 +358,7 @@ def test_extract_vm_summary_with_sdk_reported_devices() -> None:
     mock_vm.os.type = "ol_8"
     mock_vm.high_availability.enabled = False
     mock_vm.description = "Test VM"
-    mock_vm.fqdn = "test-vm.local"
+    mock_vm.fqdn = "test-vm.example.com"
 
     mock_dev1 = MagicMock()
     mock_ip1 = MagicMock()

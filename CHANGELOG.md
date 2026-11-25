@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.7] - 2026-11-25
+
+### Added
+- **Pre-flight Diagnostic Check (`ovirt-mcp check` / `ovirt-mcp --check`)**:
+  - Implemented an interactive CLI pre-flight diagnostic utility directly in `ovirt-mcp`.
+  - Verifies `.env` and environment variables, REST API reachability, TLS handshake, engine authentication, API version, and confirms registration of all 137 MCP tools.
+- **Extended `dry_run` Support to Disks, Snapshots, and Templates**:
+  - Added `dry_run: bool = False` simulation support across 7 additional operations:
+    - Virtual disks: `ovirt_disk_resize`, `ovirt_disk_move`, `ovirt_disk_sparsify`.
+    - VM snapshots: `ovirt_vm_snapshot_restore`, `ovirt_vm_snapshot_delete`.
+    - Templates: `ovirt_template_create_from_vm`, `ovirt_template_delete`.
+  - Updated `TemplateResult`, `DiskResizeResult`, and `DiskOperationResult` schemas with `dry_run: bool = False`.
+- **GitHub Actions Release Workflow**:
+  - Added `.github/workflows/release.yml` to automatically generate GitHub Releases and changelog notes upon pushing `v*` tags.
+
+### Fixed
+- **Pytest Asyncio Configuration**:
+  - Configured `asyncio_default_fixture_loop_scope = "function"` in `pyproject.toml` to eliminate `PytestDeprecationWarning`.
+- **RFC 2606 Compliance & Privacy in Test Fixtures**:
+  - Replaced non-RFC test domain references (`olvm.local`, `*.corp`) with standard `example.com` domains.
+  - Sanitized fixture MAC addresses (`00:50:56:00:11:22`).
+- **Repository Cleanliness (`.gitignore`)**:
+  - Expanded `.gitignore` with comprehensive patterns for logs, test cache files, coverage reports, and OS artifacts.
+
 ## [0.8.6] - 2026-11-25
 
 ### Added

@@ -145,6 +145,39 @@ def test_create_template_from_vm_success() -> None:
     mock_t_svc.add.assert_called_once()
 
 
+def test_create_template_from_vm_dry_run() -> None:
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_sys = MagicMock()
+    mock_vms_svc = MagicMock()
+    mock_t_svc = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_conn.system_service.return_value = mock_sys
+    mock_sys.vms_service.return_value = mock_vms_svc
+    mock_sys.templates_service.return_value = mock_t_svc
+
+    mock_vm = MagicMock()
+    mock_vm.id = "vm-uuid-1"
+    mock_vm.name = "source-vm"
+    mock_vm.status = "down"
+
+    mock_client.find_resource_by_id_or_name.return_value = mock_vm
+    mock_t_svc.list.return_value = []
+
+    with patch("ovirt_mcp.tools.templates.get_client", return_value=mock_client):
+        res = create_template_from_vm_tool(
+            "source-vm", "NewTemplate", description="Test template", dry_run=True
+        )
+
+    assert isinstance(res, TemplateResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert res.action == "create"
+    assert "[DRY RUN]" in res.message
+    mock_t_svc.add.assert_not_called()
+
+
 def test_create_template_vm_not_down_guard() -> None:
     mock_client = MagicMock()
     mock_conn = MagicMock()
@@ -229,9 +262,38 @@ def test_delete_template_success() -> None:
     mock_t_inst.remove.assert_called_once()
 
 
+def test_delete_template_dry_run() -> None:
+    mock_client = MagicMock()
+    mock_conn = MagicMock()
+    mock_sys = MagicMock()
+    mock_t_svc = MagicMock()
+    mock_t_inst = MagicMock()
+
+    mock_client.get_connection.return_value = mock_conn
+    mock_conn.system_service.return_value = mock_sys
+    mock_sys.templates_service.return_value = mock_t_svc
+    mock_t_svc.template_service.return_value = mock_t_inst
+
+    mock_t = MagicMock()
+    mock_t.id = "custom-tpl-uuid"
+    mock_t.name = "OldTemplate"
+
+    mock_client.find_resource_by_id_or_name.return_value = mock_t
+
+    with patch("ovirt_mcp.tools.templates.get_client", return_value=mock_client):
+        res = delete_template_tool("OldTemplate", confirm=True, dry_run=True)
+
+    assert isinstance(res, TemplateResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert res.action == "delete"
+    assert "[DRY RUN]" in res.message
+    mock_t_inst.remove.assert_not_called()
+
+
 def test_delete_template_safe_mode_guard() -> None:
     mock_cfg = OvirtConfig(
-        ovirt_url="https://olvm.local",
+        ovirt_url="https://olvm.example.com",
         ovirt_username="admin@internal",
         ovirt_password=SecretStr("pwd"),
         mcp_safe_mode=True,

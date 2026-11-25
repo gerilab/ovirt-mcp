@@ -197,6 +197,26 @@ def test_restore_vm_snapshot_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.snapshot_id == "snap-1"
 
 
+def test_restore_vm_snapshot_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_vm_service, _ = _setup_mock_vm(status_str="down")
+    mock_snap_svc = MagicMock()
+    mock_vm_service.snapshots_service().snapshot_service.return_value = mock_snap_svc
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        res = restore_vm_snapshot_tool("test-vm", snapshot_id="snap-1", confirm=True, dry_run=True)
+
+    assert isinstance(res, VmSnapshotResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert res.action == "restore"
+    assert "[DRY RUN]" in res.message
+    mock_snap_svc.restore.assert_not_called()
+
+
 # ── DELETE SNAPSHOT TESTS ─────────────────────────────────────────────────────
 
 
@@ -239,6 +259,26 @@ def test_delete_vm_snapshot_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.success is True
     assert res.action == "delete"
     assert res.snapshot_id == "snap-1"
+
+
+def test_delete_vm_snapshot_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_vm_service, _ = _setup_mock_vm()
+    mock_snap_svc = MagicMock()
+    mock_vm_service.snapshots_service().snapshot_service.return_value = mock_snap_svc
+
+    with patch("ovirt_mcp.tools.vms.get_client", return_value=mock_client):
+        res = delete_vm_snapshot_tool("test-vm", snapshot_id="snap-1", confirm=True, dry_run=True)
+
+    assert isinstance(res, VmSnapshotResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert res.action == "delete"
+    assert "[DRY RUN]" in res.message
+    mock_snap_svc.remove.assert_not_called()
 
 
 # ── RESTORE MEMORY & PREVIEW / COMMIT / UNDO TESTS ─────────────────────────────

@@ -2187,6 +2187,7 @@ def restore_vm_snapshot_tool(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 180,
+    dry_run: bool = False,
 ) -> VmSnapshotResult:
     """Restore (revert) a virtual machine to a previous snapshot.
 
@@ -2197,14 +2198,18 @@ def restore_vm_snapshot_tool(
         confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
         wait: If True, blocks synchronously until restore completes and VM status is 'down'.
         timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, validates VM state and snapshot eligibility without reverting.
 
     Returns:
         VmSnapshotResult with operation details.
     """
-    require_destructive_confirmation(
-        f"restore VM '{name_or_id}' to snapshot '{snapshot_id}' (restore_memory={restore_memory})",
-        confirmed=confirm,
-    )
+    if not dry_run:
+        require_destructive_confirmation(
+            f"restore VM '{name_or_id}' to snapshot '{snapshot_id}' (restore_memory={restore_memory})",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("restore_vm_snapshot")
 
     client = get_client()
     conn = client.get_connection()
@@ -2254,6 +2259,29 @@ def restore_vm_snapshot_tool(
             raise
         except Exception as snap_err:
             logger.debug("Transient error inspecting snapshot memory state: %s", snap_err)
+
+    if dry_run:
+        audit_log(
+            "restore_vm_snapshot",
+            vm_name,
+            {
+                "vm_id": vm_id,
+                "snapshot_id": snapshot_id,
+                "restore_memory": restore_memory,
+                "dry_run": True,
+            },
+            "SUCCESS",
+        )
+        return VmSnapshotResult(
+            success=True,
+            action="restore",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            snapshot_id=snapshot_id,
+            restore_memory=restore_memory,
+            dry_run=True,
+            message=f"[DRY RUN] VM '{vm_name}' (status: '{curr_status}') would be restored to snapshot '{snapshot_id}' (restore_memory={restore_memory}). No changes were made.",
+        )
 
     start_attempt = time.time()
     while True:
@@ -2630,6 +2658,7 @@ def delete_vm_snapshot_tool(
     confirm: bool = False,
     wait: bool = False,
     timeout_seconds: int = 180,
+    dry_run: bool = False,
 ) -> VmSnapshotResult:
     """Delete a snapshot and consolidate its delta back into the virtual disk images.
 
@@ -2639,13 +2668,17 @@ def delete_vm_snapshot_tool(
         confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
         wait: If True, blocks synchronously until snapshot is removed and consolidation completes.
         timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, validates snapshot existence without deleting.
 
     Returns:
         VmSnapshotResult with operation details.
     """
-    require_destructive_confirmation(
-        f"delete snapshot '{snapshot_id}' of VM '{name_or_id}'", confirmed=confirm
-    )
+    if not dry_run:
+        require_destructive_confirmation(
+            f"delete snapshot '{snapshot_id}' of VM '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("delete_vm_snapshot")
 
     client = get_client()
     conn = client.get_connection()
@@ -2656,6 +2689,23 @@ def delete_vm_snapshot_tool(
     vm_service = vms_service.vm_service(vm_id)
 
     snap_service = vm_service.snapshots_service().snapshot_service(snapshot_id)
+
+    if dry_run:
+        audit_log(
+            "delete_vm_snapshot",
+            vm_name,
+            {"vm_id": vm_id, "snapshot_id": snapshot_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return VmSnapshotResult(
+            success=True,
+            action="delete",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            snapshot_id=snapshot_id,
+            dry_run=True,
+            message=f"[DRY RUN] Snapshot '{snapshot_id}' on VM '{vm_name}' would be deleted and consolidated. No changes were made.",
+        )
 
     start_attempt = time.time()
     while True:

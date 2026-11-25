@@ -69,3 +69,37 @@ async def test_ovirt_mcp_server_error_wrapping() -> None:
     with pytest.raises(ToolError) as exc_info2:
         await test_server.call_tool("tool_ovirt_error", {})
     assert "VM 'vm-not-found-123' not found" in str(exc_info2.value)
+
+
+def test_server_check_cli_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test check_connection_cli returns 0 on successful engine check."""
+    from unittest.mock import MagicMock
+
+    from ovirt_mcp.server import check_connection_cli
+
+    mock_client = MagicMock()
+    mock_client.test_connection.return_value = {
+        "status": "connected",
+        "product_name": "oVirt Engine",
+        "version": "4.5.5",
+        "url": "https://olvm.example.com/ovirt-engine/api",
+    }
+    monkeypatch.setattr("ovirt_mcp.server.get_client", lambda: mock_client)
+
+    exit_code = check_connection_cli()
+    assert exit_code == 0
+    mock_client.test_connection.assert_called_once()
+
+
+def test_server_check_cli_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test check_connection_cli returns 1 on failed engine check."""
+    from unittest.mock import MagicMock
+
+    from ovirt_mcp.server import check_connection_cli
+
+    mock_client = MagicMock()
+    mock_client.test_connection.side_effect = RuntimeError("Connection refused")
+    monkeypatch.setattr("ovirt_mcp.server.get_client", lambda: mock_client)
+
+    exit_code = check_connection_cli()
+    assert exit_code == 1
