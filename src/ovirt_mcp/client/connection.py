@@ -240,7 +240,11 @@ class OvirtClient:
             single_service_fn = getattr(service, "pool_service", None) or getattr(
                 service, "vm_pool_service", None
             )
-        if single_service_fn is None and resource_type_name in ("vnic_profile", "vnic profile", "profile"):
+        if single_service_fn is None and resource_type_name in (
+            "vnic_profile",
+            "vnic profile",
+            "profile",
+        ):
             single_service_fn = getattr(service, "profile_service", None) or getattr(
                 service, "vnic_profile_service", None
             )

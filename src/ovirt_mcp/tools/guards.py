@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -381,7 +381,7 @@ def audit_log(action_name: str, target: str, details: dict[str, Any], status: st
             log_path = Path(config.ovirt_audit_log_file)
             log_path.parent.mkdir(parents=True, exist_ok=True)
             record = {
-                "timestamp": datetime.now(UTC).isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "action": action_name,
                 "user": config.ovirt_username,
                 "target": target,

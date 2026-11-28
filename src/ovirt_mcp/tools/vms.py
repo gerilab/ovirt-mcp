@@ -474,9 +474,11 @@ def list_vms_tool(
 
     search_clauses: list[str] = []
     if cluster:
-        search_clauses.append(f'cluster="{cluster.replace('"', "")}"')
+        clean_cluster = cluster.replace('"', "")
+        search_clauses.append(f'cluster="{clean_cluster}"')
     if status:
-        search_clauses.append(f'status="{status.replace('"', "")}"')
+        clean_status = status.replace('"', "")
+        search_clauses.append(f'status="{clean_status}"')
     if search_query:
         search_clauses.append(search_query)
 
