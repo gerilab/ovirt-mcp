@@ -64,3 +64,28 @@ def test_find_resource_not_found(mock_config: OvirtConfig) -> None:
 
     with pytest.raises(NotFoundError):
         client.find_resource_by_id_or_name(mock_service, "non-existent-vm", "vm")
+
+
+def test_find_resource_ambiguous_name(mock_config: OvirtConfig) -> None:
+    """Test find_resource_by_id_or_name raises OvirtValidationError when multiple resources share a name."""
+    from ovirt_mcp.client.exceptions import OvirtValidationError
+
+    client = OvirtClient(config=mock_config)
+
+    mock_service = MagicMock()
+    mock_sub_service = MagicMock()
+    mock_sub_service.get.side_effect = Exception("Not a UUID")
+    mock_service.disk_service.return_value = mock_sub_service
+
+    disk1 = MagicMock(id="uuid-1", name="duplicate-disk")
+    disk1.name = "duplicate-disk"
+    disk2 = MagicMock(id="uuid-2", name="duplicate-disk")
+    disk2.name = "duplicate-disk"
+    mock_service.list.return_value = [disk1, disk2]
+
+    with pytest.raises(OvirtValidationError) as exc_info:
+        client.find_resource_by_id_or_name(mock_service, "duplicate-disk", "disk")
+
+    assert "Ambiguous disk identifier" in str(exc_info.value)
+    assert "uuid-1" in str(exc_info.value)
+    assert "uuid-2" in str(exc_info.value)

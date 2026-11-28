@@ -7,7 +7,7 @@ from typing import Any
 from ovirtsdk4 import types as sdk_types
 
 from ovirt_mcp.client import get_client
-from ovirt_mcp.client.exceptions import OvirtValidationError
+from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtValidationError
 from ovirt_mcp.models.storage import (
     StorageConnectionInfo,
     StorageDomainDetail,
@@ -17,12 +17,15 @@ from ovirt_mcp.models.storage import (
     StorageDomainTopDiskIo,
     StorageLogicalUnit,
 )
+from ovirt_mcp.models.vm import VmCreateResult, VmSummary
 from ovirt_mcp.tools.disks import extract_disk_io_stats
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
     require_mutation_allowed,
+    require_storage_domain_status,
 )
+from ovirt_mcp.tools.vms import extract_vm_summary
 
 logger = logging.getLogger("ovirt_mcp.tools.storage")
 
@@ -468,6 +471,34 @@ def ovirt_storage_domain_get(name_or_id: str) -> StorageDomainDetail:
         **summary.model_dump(),
         description=str(sd_detail.description)
         if getattr(sd_detail, "description", None) and not _is_mock_object(sd_detail.description)
+        else None,
+        comment=str(sd_detail.comment)
+        if getattr(sd_detail, "comment", None) and not _is_mock_object(sd_detail.comment)
+        else None,
+        block_size=int(sd_detail.block_size)
+        if getattr(sd_detail, "block_size", None) and not _is_mock_object(sd_detail.block_size)
+        else None,
+        discard_after_delete=bool(getattr(sd_detail, "discard_after_delete", False))
+        if getattr(sd_detail, "discard_after_delete", None) is not None
+        and not _is_mock_object(getattr(sd_detail, "discard_after_delete", None))
+        else None,
+        external_status=str(
+            getattr(
+                getattr(sd_detail, "external_status", None),
+                "value",
+                getattr(sd_detail, "external_status", None),
+            )
+        )
+        if getattr(sd_detail, "external_status", None) is not None
+        and not _is_mock_object(getattr(sd_detail, "external_status", None))
+        else None,
+        backup=bool(getattr(sd_detail, "backup", False))
+        if getattr(sd_detail, "backup", None) is not None
+        and not _is_mock_object(getattr(sd_detail, "backup", None))
+        else None,
+        master=bool(getattr(sd_detail, "master", False))
+        if getattr(sd_detail, "master", None) is not None
+        and not _is_mock_object(getattr(sd_detail, "master", None))
         else None,
         warning_low_space_indicator=int(warn_threshold)
         if warn_threshold is not None and not _is_mock_object(warn_threshold)
@@ -958,4 +989,454 @@ def ovirt_storage_domain_delete(
             f"Storage Domain '{sd.name}' deleted successfully "
             f"(format={format}, executed via host '{exec_host_name}')."
         ),
+    )
+
+
+def ovirt_storage_domain_update_ovf_store(
+    name_or_id: str,
+    dry_run: bool = False,
+) -> StorageDomainResult:
+    """Trigger immediate OVF store synchronization and generation on a storage domain.
+
+    Args:
+        name_or_id: Name or UUID of the storage domain.
+        dry_run: If True, validates preconditions without executing.
+
+    Returns:
+        StorageDomainResult with operation outcome.
+    """
+    require_mutation_allowed("ovirt_storage_domain_update_ovf_store")
+
+    client = get_client()
+    conn = client.get_connection()
+    sds_service = conn.system_service().storage_domains_service()
+    sd = client.find_resource_by_id_or_name(sds_service, name_or_id, "storage domain")
+    sd_id = str(sd.id)
+    sd_name = str(sd.name)
+    curr_status = getattr(getattr(sd, "status", None), "value", None)
+    if curr_status:
+        require_storage_domain_status(
+            sd_name,
+            curr_status,
+            allowed_statuses=("active",),
+            action_name="update_ovf_store",
+        )
+
+    if dry_run:
+        return StorageDomainResult(
+            success=True,
+            action="update_ovf_store",
+            storage_domain_id=sd_id,
+            storage_domain_name=sd_name,
+            message=f"[DRY RUN] OVF store update validated for storage domain '{sd_name}'.",
+        )
+
+    try:
+        sd_service = sds_service.storage_domain_service(sd_id)
+        sd_service.update_ovf_store()
+        audit_log(
+            "ovirt_storage_domain_update_ovf_store",
+            sd_name,
+            {"storage_domain_id": sd_id},
+            "SUCCESS",
+        )
+        return StorageDomainResult(
+            success=True,
+            action="update_ovf_store",
+            storage_domain_id=sd_id,
+            storage_domain_name=sd_name,
+            message=f"OVF store synchronization successfully initiated for storage domain '{sd_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_storage_domain_update_ovf_store",
+            sd_name,
+            {"storage_domain_id": sd_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to update OVF store for storage domain '{sd_name}': {exc}"
+        ) from exc
+
+
+def refresh_luns_storage_domain_tool(
+    name_or_id: str,
+    logical_units: list[str] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> StorageDomainResult:
+    """Rescan and refresh SAN/iSCSI LUN sizes and visibility on a block storage domain.
+
+    Args:
+        name_or_id: Name or UUID of the storage domain.
+        logical_units: Optional list of specific LUN IDs to refresh. If None, refreshes all LUNs.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        StorageDomainResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"refresh LUNs on storage domain '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("refresh_luns_storage_domain")
+
+    client = get_client()
+    conn = client.get_connection()
+    sds_service = conn.system_service().storage_domains_service()
+    sd = client.find_resource_by_id_or_name(sds_service, name_or_id, "storage domain")
+    sd_id = str(sd.id)
+    sd_name = str(sd.name)
+    curr_status = getattr(getattr(sd, "status", None), "value", None)
+    if curr_status:
+        require_storage_domain_status(
+            sd_name,
+            curr_status,
+            allowed_statuses=("active",),
+            action_name="refresh_luns_storage_domain",
+        )
+
+    if dry_run:
+        return StorageDomainResult(
+            success=True,
+            action="refresh_luns",
+            storage_domain_id=sd_id,
+            storage_domain_name=sd_name,
+            dry_run=True,
+            message=f"[DRY RUN] Refresh LUNs validated for storage domain '{sd_name}'.",
+        )
+
+    try:
+        sd_service = sds_service.storage_domain_service(sd_id)
+        if logical_units:
+            luns_payload = [sdk_types.LogicalUnit(id=lun_id) for lun_id in logical_units]
+            sd_service.refresh_luns(logical_units=luns_payload)
+        else:
+            sd_service.refresh_luns()
+        audit_log(
+            "ovirt_storage_domain_refresh_luns",
+            sd_name,
+            {"storage_domain_id": sd_id, "logical_units": logical_units},
+            "SUCCESS",
+        )
+        return StorageDomainResult(
+            success=True,
+            action="refresh_luns",
+            storage_domain_id=sd_id,
+            storage_domain_name=sd_name,
+            dry_run=False,
+            message=f"LUN refresh signal successfully sent for storage domain '{sd_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_storage_domain_refresh_luns",
+            sd_name,
+            {"storage_domain_id": sd_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to refresh LUNs for storage domain '{sd_name}': {exc}"
+        ) from exc
+
+
+def reduce_luns_storage_domain_tool(
+    name_or_id: str,
+    logical_units: list[str],
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> StorageDomainResult:
+    """Release and reduce unused SAN/iSCSI LUN physical volumes from a block storage domain.
+
+    Args:
+        name_or_id: Name or UUID of the storage domain.
+        logical_units: List of LUN IDs to release/reduce from the domain.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        StorageDomainResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"reduce LUNs {logical_units} from storage domain '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("reduce_luns_storage_domain")
+
+    if not logical_units:
+        raise OvirtValidationError("At least one LUN ID must be specified to reduce.")
+
+    client = get_client()
+    conn = client.get_connection()
+    sds_service = conn.system_service().storage_domains_service()
+    sd = client.find_resource_by_id_or_name(sds_service, name_or_id, "storage domain")
+    sd_id = str(sd.id)
+    sd_name = str(sd.name)
+    curr_status = getattr(getattr(sd, "status", None), "value", None)
+    if curr_status:
+        require_storage_domain_status(
+            sd_name,
+            curr_status,
+            allowed_statuses=("active",),
+            action_name="reduce_luns_storage_domain",
+        )
+
+    if dry_run:
+        return StorageDomainResult(
+            success=True,
+            action="reduce_luns",
+            storage_domain_id=sd_id,
+            storage_domain_name=sd_name,
+            dry_run=True,
+            message=f"[DRY RUN] Reduce LUNs {logical_units} validated for storage domain '{sd_name}'.",
+        )
+
+    try:
+        sd_service = sds_service.storage_domain_service(sd_id)
+        luns_payload = [sdk_types.LogicalUnit(id=lun_id) for lun_id in logical_units]
+        sd_service.reduce_luns(logical_units=luns_payload)
+        audit_log(
+            "ovirt_storage_domain_reduce_luns",
+            sd_name,
+            {"storage_domain_id": sd_id, "logical_units": logical_units},
+            "SUCCESS",
+        )
+        return StorageDomainResult(
+            success=True,
+            action="reduce_luns",
+            storage_domain_id=sd_id,
+            storage_domain_name=sd_name,
+            dry_run=False,
+            message=f"LUN reduction successfully initiated on storage domain '{sd_name}' for LUNs: {logical_units}.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_storage_domain_reduce_luns",
+            sd_name,
+            {"storage_domain_id": sd_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to reduce LUNs on storage domain '{sd_name}': {exc}") from exc
+
+
+def ovirt_storage_domain_update(
+    name_or_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    warning_low_space_indicator: int | None = None,
+    critical_space_action_blocker: int | None = None,
+    dry_run: bool = False,
+) -> StorageDomainDetail:
+    """Update Storage Domain attributes (name, description, comment, or warning/critical space thresholds).
+
+    Args:
+        name_or_id: Name or UUID of the Storage Domain to update.
+        name: Optional updated name for the Storage Domain.
+        description: Optional updated description.
+        comment: Optional updated comment.
+        warning_low_space_indicator: Low space warning threshold in percent (0-100).
+        critical_space_action_blocker: Critical space blocking threshold in GB.
+        dry_run: If True, validates update parameters without applying changes.
+
+    Returns:
+        Updated StorageDomainDetail representation.
+    """
+    require_mutation_allowed("update_storage_domain")
+
+    client = get_client()
+    conn = client.get_connection()
+    sds_service = conn.system_service().storage_domains_service()
+
+    sd = client.find_resource_by_id_or_name(sds_service, name_or_id, "storage domain")
+    sd_id = str(sd.id)
+    sd_name = str(getattr(sd, "name", sd_id))
+
+    sd_kwargs: dict[str, Any] = {}
+    if name is not None:
+        sd_kwargs["name"] = name
+    if description is not None:
+        sd_kwargs["description"] = description
+    if comment is not None:
+        sd_kwargs["comment"] = comment
+    if warning_low_space_indicator is not None:
+        if warning_low_space_indicator < 0 or warning_low_space_indicator > 100:
+            raise OvirtValidationError(
+                "warning_low_space_indicator must be between 0 and 100 percent."
+            )
+        sd_kwargs["warning_low_space_indicator"] = warning_low_space_indicator
+    if critical_space_action_blocker is not None:
+        if critical_space_action_blocker < 0:
+            raise OvirtValidationError("critical_space_action_blocker must be non-negative.")
+        sd_kwargs["critical_space_action_blocker"] = critical_space_action_blocker
+
+    if not sd_kwargs:
+        raise OvirtValidationError("No attributes provided to update for storage domain.")
+
+    if dry_run:
+        audit_log(
+            "ovirt_storage_domain_update",
+            sd_name,
+            {"storage_domain_id": sd_id, "updates": list(sd_kwargs.keys()), "dry_run": True},
+            "SUCCESS",
+        )
+        return ovirt_storage_domain_get(sd_id)
+
+    sd_service = sds_service.storage_domain_service(sd_id)
+    try:
+        sd_service.update(sdk_types.StorageDomain(**sd_kwargs))
+    except Exception as exc:
+        audit_log(
+            "ovirt_storage_domain_update",
+            sd_name,
+            {"storage_domain_id": sd_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to update storage domain '{sd_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_storage_domain_update",
+        sd_name,
+        {"storage_domain_id": sd_id, "updates": list(sd_kwargs.keys())},
+        "SUCCESS",
+    )
+    return ovirt_storage_domain_get(sd_id)
+
+
+update_storage_domain_tool = ovirt_storage_domain_update
+
+
+def list_unregistered_vms_tool(storage_domain: str) -> list[VmSummary]:
+    """List unregistered virtual machines found on a Storage Domain (disaster recovery / import).
+
+    Args:
+        storage_domain: Storage Domain name or UUID.
+
+    Returns:
+        List of VmSummary objects found on the storage domain but not yet registered in oVirt engine.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    sds_service = conn.system_service().storage_domains_service()
+    sd = client.find_resource_by_id_or_name(sds_service, storage_domain, "storage_domain")
+    sd_id = str(sd.id)
+
+    sd_service = sds_service.storage_domain_service(sd_id)
+    vms_service = sd_service.vms_service()
+    unregistered_vms = vms_service.list()
+
+    results: list[VmSummary] = []
+    for vm in unregistered_vms:
+        if _is_mock_object(vm):
+            continue
+        results.append(extract_vm_summary(vm))
+    return results
+
+
+def register_unregistered_vm_tool(
+    storage_domain: str,
+    vm_id: str,
+    cluster: str,
+    new_name: str | None = None,
+    allow_partial_import: bool = False,
+    reassign_bad_macs: bool = True,
+    dry_run: bool = False,
+) -> VmCreateResult:
+    """Register an unregistered virtual machine from a Storage Domain into a cluster.
+
+    Args:
+        storage_domain: Storage Domain name or UUID where the VM resides.
+        vm_id: UUID of the unregistered virtual machine.
+        cluster: Target cluster name or UUID to assign the VM to.
+        new_name: Optional new display name for the registered VM.
+        allow_partial_import: If True, allows registering VM even if some disks are missing.
+        reassign_bad_macs: If True, reassigns conflicting MAC addresses automatically.
+        dry_run: If True, validates registration parameters without importing.
+
+    Returns:
+        VmCreateResult with registration outcome.
+    """
+    require_mutation_allowed("register_unregistered_vm")
+
+    client = get_client()
+    conn = client.get_connection()
+    system_service = conn.system_service()
+
+    sds_service = system_service.storage_domains_service()
+    sd = client.find_resource_by_id_or_name(sds_service, storage_domain, "storage_domain")
+    sd_id = str(sd.id)
+    sd_name = str(getattr(sd, "name", sd_id))
+
+    clusters_service = system_service.clusters_service()
+    cluster_obj = client.find_resource_by_id_or_name(clusters_service, cluster, "cluster")
+    cluster_id = str(cluster_obj.id)
+    cluster_name = str(getattr(cluster_obj, "name", cluster_id))
+
+    if dry_run:
+        audit_log(
+            "ovirt_storage_domain_register_vm",
+            vm_id,
+            {
+                "storage_domain": sd_name,
+                "cluster": cluster_name,
+                "new_name": new_name,
+                "dry_run": True,
+            },
+            "SUCCESS",
+        )
+        return VmCreateResult(
+            success=True,
+            vm_id=vm_id,
+            vm_name=new_name or vm_id,
+            cluster_name=cluster_name,
+            template_name="Blank",
+            status="down",
+            memory_mb=0,
+            cpu_cores=0,
+            message=f"[DRY RUN] Unregistered VM '{vm_id}' from '{sd_name}' would be registered into cluster '{cluster_name}'.",
+        )
+
+    sd_service = sds_service.storage_domain_service(sd_id)
+    vm_service = sd_service.vms_service().vm_service(vm_id)
+
+    reg_kwargs: dict[str, Any] = {
+        "cluster": sdk_types.Cluster(id=cluster_id),
+        "allow_partial_import": allow_partial_import,
+        "reassign_bad_macs": reassign_bad_macs,
+    }
+    if new_name is not None:
+        reg_kwargs["vm"] = sdk_types.Vm(name=new_name)
+
+    try:
+        registered_vm = vm_service.register(**reg_kwargs)
+    except Exception as exc:
+        audit_log(
+            "ovirt_storage_domain_register_vm",
+            vm_id,
+            {"storage_domain": sd_name, "cluster": cluster_name, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to register VM '{vm_id}' from storage domain '{sd_name}': {exc}"
+        ) from exc
+
+    final_name = str(new_name or getattr(registered_vm, "name", None) or vm_id)
+    audit_log(
+        "ovirt_storage_domain_register_vm",
+        final_name,
+        {"vm_id": vm_id, "storage_domain": sd_name, "cluster": cluster_name},
+        "SUCCESS",
+    )
+    return VmCreateResult(
+        success=True,
+        vm_id=vm_id,
+        vm_name=final_name,
+        cluster_name=cluster_name,
+        template_name="Blank",
+        status="down",
+        memory_mb=0,
+        cpu_cores=0,
+        message=f"Virtual machine '{final_name}' successfully registered into cluster '{cluster_name}' from storage domain '{sd_name}'.",
     )

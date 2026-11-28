@@ -35,3 +35,14 @@ class DataCenterDetail(DataCenterSummary):
         default_factory=list,
         description="Names or UUIDs of logical networks defined in this Data Center",
     )
+
+
+class DataCenterOperationResult(BaseModel):
+    """Result of an operational action on a Data Center."""
+
+    success: bool = Field(description="Whether the Data Center operation succeeded.")
+    data_center_id: str = Field(description="UUID of the Data Center.")
+    data_center_name: str = Field(description="Name of the Data Center.")
+    action: str = Field(description="Action executed (e.g. 'clean_finished_tasks').")
+    dry_run: bool = Field(default=False, description="Whether this was a dry-run simulation.")
+    message: str = Field(description="Human-readable result summary.")

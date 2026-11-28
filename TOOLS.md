@@ -1,6 +1,8 @@
 # oVirt / OLVM MCP Server - Complete Tool Reference Catalog
 
-> **Architecture Note:** This document provides the complete, authoritative parameter reference, input/output schemas, safety rules, and example responses for all **137 tools** provided by `ovirt-mcp`. For server installation, architecture, authentication, and client configuration, refer back to [README.md](README.md).
+> **Architecture Note:** This document provides the complete, authoritative parameter reference, input/output schemas, safety rules, and example responses for all **186 tools** provided by `ovirt-mcp`. For server installation, architecture, authentication, and client configuration, refer back to [README.md](README.md).
+>
+> **Lifecycle Safety & Pre-flight Guards:** All 186 tools enforce centralized **Pre-flight Status Guards** that validate target entity states and strictly prevent invalid mutations during transitional states (`saving_state`, `image_locked`, `reboot`, etc.). For comprehensive state machine documentation, visual Mermaid diagrams, and remediation guides, see [docs/STATUS_GUARDS.md](docs/STATUS_GUARDS.md).
 
 ## Table of Contents
 
@@ -21,6 +23,7 @@
 15. [Virtual Machine Pools](#122-ovirt_vm_pool_list) (`ovirt_vm_pool_*`)
 16. [Backup & Incremental CBT Checkpoints](#128-ovirt_vm_checkpoint_list) (`ovirt_vm_checkpoint_*`, `ovirt_vm_backup_*`)
 17. [Asynchronous Jobs & Progress Monitoring](#135-ovirt_job_list) (`ovirt_job_list`, `ovirt_job_get`)
+18. [Operational Parity, Host Deployment & Maintenance Tools](#138-ovirt_host_reinstall) (`ovirt_host_reinstall`, `ovirt_vm_cancel_migration`, `ovirt_vm_suspend`, `ovirt_vm_reset`, `ovirt_host_refresh`, `ovirt_host_force_select_spm`, `ovirt_storage_domain_update_ovf_store`, `ovirt_vm_freeze_filesystems`, `ovirt_vm_thaw_filesystems`, `ovirt_vm_auto_pin`, `ovirt_host_enroll_certificate`, `ovirt_host_sync_all_networks`, `ovirt_host_commit_net_config`, `ovirt_storage_domain_refresh_luns`, `ovirt_storage_domain_reduce_luns`, `ovirt_disk_reduce`, `ovirt_cluster_sync_all_networks`, `ovirt_cluster_reset_emulated_machine`, `ovirt_datacenter_clean_finished_tasks`, `ovirt_template_export`, `ovirt_host_delete`, `ovirt_host_create`, `ovirt_disk_get`, `ovirt_disk_delete`, `ovirt_vm_clone`, `ovirt_cluster_create`, `ovirt_cluster_delete`, `ovirt_datacenter_create`, `ovirt_datacenter_delete`, `ovirt_host_update`, `ovirt_network_update`, `ovirt_template_update`, `ovirt_storage_domain_update`)
 
 ---
 
@@ -2771,4 +2774,905 @@ Retrieves deep technical metadata and child execution steps for an asynchronous 
   ]
 }
 ```
+
+---
+
+## 18. Operational Parity, Host Deployment & Maintenance Tools
+
+### 138. `ovirt_host_reinstall`
+
+Reinstalls or deploys the management software stack (VDSM, PKI certificates, network configuration) on a hypervisor host using the engine's built-in Ansible deployment playbooks (`ovirt-host-deploy`).
+
+> **Safety Pre-Flight Guard:** The host MUST be in `maintenance`, `non_operational`, or `install_failed` state. Active hypervisors with running VMs are strictly blocked to protect running tenant workloads. In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Host display name or UUID.
+  - `reboot` *(bool, optional, default: true)*: Whether to reboot host after installation.
+  - `activate` *(bool, optional, default: true)*: Automatically activate host upon completion.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+  - `dry_run` *(bool, optional, default: false)*: Validates preconditions without executing deployment.
+- **Outputs (`HostInstallResult`):**
+  - `success`: Boolean execution status.
+  - `host_id`: Host UUID.
+  - `host_name`: Host display name.
+  - `status`: Host lifecycle state (`"installing"`).
+  - `reboot_requested`: Boolean flag.
+  - `activate_on_finish`: Boolean flag.
+  - `message`: Outcome description.
+
+---
+
+### 139. `ovirt_vm_cancel_migration`
+
+Cancels an in-progress live migration of a virtual machine, stopping memory block transfers and leaving the VM on its source host.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates cancellation preconditions without executing.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`VmLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"cancel_migration"`.
+  - `vm_id`: VM UUID.
+  - `vm_name`: VM name.
+  - `message`: Outcome description.
+
+---
+
+### 140. `ovirt_vm_suspend`
+
+Suspends a running virtual machine to disk (pause / hibernate), writing its runtime memory state to persistent storage.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. VM must be in `up` state. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates suspend preconditions without executing.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`VmLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"suspend"`.
+  - `vm_id`: VM UUID.
+  - `vm_name`: VM name.
+  - `message`: Outcome description.
+
+---
+
+### 141. `ovirt_vm_reset`
+
+Executes a hard hardware reset on a virtual machine (simulates pressing the physical chassis reset button).
+
+> **Safe Mode Protection:** Bypasses ACPI guest OS shutdown; requires `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`). Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates reset preconditions without executing.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`VmLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"reset"`.
+  - `vm_id`: VM UUID.
+  - `vm_name`: VM name.
+  - `message`: Outcome description.
+
+---
+
+### 142. `ovirt_host_refresh`
+
+Refreshes host hardware, capabilities, and device inventory from VDSM. Useful following hardware changes, PCI passthrough updates, or network reconfiguration.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Host display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates host existence without executing refresh.
+- **Outputs (`HostLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"refresh"`.
+  - `host_id`: Host UUID.
+  - `host_name`: Host display name.
+  - `message`: Outcome description.
+
+---
+
+### 143. `ovirt_host_force_select_spm`
+
+Forces selection of a specific hypervisor host as Storage Pool Manager (SPM). Host must be in `up` state.
+
+> **Safe Mode Protection:** Influences storage pool leadership; requires `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`). Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Host display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates SPM selection criteria without executing.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`HostLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"force_select_spm"`.
+  - `host_id`: Host UUID.
+  - `host_name`: Host display name.
+  - `message`: Outcome description.
+
+---
+
+### 144. `ovirt_storage_domain_update_ovf_store`
+
+Triggers immediate OVF store synchronization and generation on a storage domain, updating on-disk VM and template metadata.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Storage domain name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates preconditions without executing.
+- **Outputs (`StorageDomainResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"update_ovf_store"`.
+  - `storage_domain_id`: Storage domain UUID.
+  - `storage_domain_name`: Storage domain name.
+  - `message`: Outcome description.
+
+---
+
+### 145. `ovirt_vm_freeze_filesystems`
+
+Freezes (quiesces) virtual machine guest filesystems via `qemu-guest-agent` prior to creating external storage snapshots or initiating application-consistent storage backups.
+
+> **Safe Mode Protection:** Quiescing pauses guest I/O; requires `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`). Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates VM eligibility without freezing filesystems.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`VmLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"freeze_filesystems"`.
+  - `vm_id`: VM UUID.
+  - `vm_name`: VM name.
+  - `message`: Outcome description.
+
+---
+
+### 146. `ovirt_vm_thaw_filesystems`
+
+Thaws (unquiesces) virtual machine guest filesystems via `qemu-guest-agent` after external storage snapshots or backups complete.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates VM eligibility without thawing filesystems.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`VmLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"thaw_filesystems"`.
+  - `vm_id`: VM UUID.
+  - `vm_name`: VM name.
+  - `message`: Outcome description.
+
+---
+
+### 147. `ovirt_vm_auto_pin`
+
+Calculates and applies automated CPU and NUMA node pinning topology to a virtual machine based on cluster optimization rules.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `optimize_cpu_settings` *(bool, optional, default: false)*: Also optimize socket/core CPU topology settings.
+  - `dry_run` *(bool, optional, default: false)*: Validates auto-pin criteria without applying changes.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`VmLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"auto_pin"`.
+  - `vm_id`: VM UUID.
+  - `vm_name`: VM name.
+  - `message`: Outcome description.
+
+---
+
+### 148. `ovirt_host_enroll_certificate`
+
+Enrolls or renews the PKI TLS certificate of a hypervisor host with the oVirt / OLVM engine internal Certificate Authority (CA).
+
+> **Safe Mode Protection:** Updating host cryptographic certificates is a critical infrastructure operation; requires `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`). Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Hypervisor host display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates host certificate enrollment without executing.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`HostLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"enroll_certificate"`.
+  - `host_id`: Host UUID.
+  - `host_name`: Host display name.
+  - `message`: Outcome description.
+
+---
+
+### 149. `ovirt_host_sync_all_networks`
+
+Synchronizes all out-of-sync physical and logical network configurations on a hypervisor host with cluster definitions.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Hypervisor host display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates network sync preconditions without dispatching command.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`HostLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"sync_all_networks"`.
+  - `host_id`: Host UUID.
+  - `host_name`: Host display name.
+  - `message`: Outcome description.
+
+---
+
+### 150. `ovirt_host_commit_net_config`
+
+Commits and persists current running network configuration to permanent storage on a hypervisor host.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Hypervisor host display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates commit preconditions without executing.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`HostLifecycleResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"commit_net_config"`.
+  - `host_id`: Host UUID.
+  - `host_name`: Host display name.
+  - `message`: Outcome description.
+
+---
+
+### 151. `ovirt_storage_domain_refresh_luns`
+
+Rescans and refreshes SAN / iSCSI LUN sizes, paths, and visibility across hypervisors on a block storage domain. Useful following external SAN volume expansion.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Storage domain name or UUID.
+  - `logical_units` *(list[string], optional)*: Optional list of specific LUN IDs to refresh. If omitted, refreshes all LUNs.
+  - `dry_run` *(bool, optional, default: false)*: Validates preconditions without sending refresh command.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`StorageDomainResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"refresh_luns"`.
+  - `storage_domain_id`: Storage domain UUID.
+  - `storage_domain_name`: Storage domain name.
+  - `message`: Outcome description.
+
+---
+
+### 152. `ovirt_storage_domain_reduce_luns`
+
+Releases and reduces unused SAN / iSCSI LUN physical volumes from a block storage domain.
+
+> **Safe Mode Protection:** Destructive block storage operation; requires `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`). Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Storage domain name or UUID.
+  - `logical_units` *(list[string], required)*: List of LUN IDs to release/reduce from domain.
+  - `dry_run` *(bool, optional, default: false)*: Validates LUN eligibility without releasing.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`StorageDomainResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"reduce_luns"`.
+  - `storage_domain_id`: Storage domain UUID.
+  - `storage_domain_name`: Storage domain name.
+  - `message`: Outcome description.
+
+---
+
+### 153. `ovirt_disk_reduce`
+
+Reduces (shrinks) the physical underlying storage volume allocation for a thin-provisioned virtual disk, returning freed space to the storage pool.
+
+> **Safe Mode Protection:** Modifies physical volume allocation; requires `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`). Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `disk_name_or_id` *(string, required)*: Virtual disk name or UUID.
+  - `wait` *(bool, optional, default: true)*: Block synchronously until reduction completes.
+  - `timeout` *(int, optional, default: 300)*: Maximum wait timeout in seconds.
+  - `dry_run` *(bool, optional, default: false)*: Validates disk eligibility without reducing volume.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`DiskOperationResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"reduce"`.
+  - `disk_id`: Virtual disk UUID.
+  - `disk_name`: Virtual disk name.
+  - `message`: Outcome description.
+
+---
+
+### 154. `ovirt_cluster_sync_all_networks`
+
+Synchronizes logical network configurations across all hypervisor hosts in an entire cluster simultaneously.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Cluster name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates cluster preconditions without dispatching sync.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`ClusterOperationResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"sync_all_networks"`.
+  - `cluster_id`: Cluster UUID.
+  - `cluster_name`: Cluster name.
+  - `message`: Outcome description.
+
+---
+
+### 155. `ovirt_cluster_reset_emulated_machine`
+
+Resets the cluster default emulated machine type (e.g. `pc-q35-*`, `pc-i440fx-*`) to the hypervisor platform default baseline.
+
+> **Safe Mode Protection:** Modifies cluster-wide hardware emulation defaults; requires `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`). Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Cluster name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates cluster preconditions without resetting machine type.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`ClusterOperationResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"reset_emulated_machine"`.
+  - `cluster_id`: Cluster UUID.
+  - `cluster_name`: Cluster name.
+  - `message`: Outcome description.
+
+---
+
+### 156. `ovirt_datacenter_clean_finished_tasks`
+
+Cleans finished asynchronous tasks for a Data Center to reclaim engine database and memory task tracking slots.
+
+> **Safe Mode Protection:** In Safe Mode (`MCP_SAFE_MODE=true`), requires explicit `confirm=True`. Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Data Center name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates Data Center preconditions without cleaning tasks.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`DataCenterOperationResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"clean_finished_tasks"`.
+  - `data_center_id`: Data Center UUID.
+  - `data_center_name`: Data Center name.
+  - `message`: Outcome description.
+
+---
+
+### 157. `ovirt_template_export`
+
+Exports an oVirt / OLVM template to an Export Storage Domain.
+
+> **Safe Mode Protection:** Exporting creates disk images in the export domain; requires `confirm=True` in Safe Mode (`MCP_SAFE_MODE=true`). Supports simulation mode (`dry_run=True`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Template display name or UUID.
+  - `storage_domain` *(string, required)*: Target export storage domain name or UUID.
+  - `exclusive` *(bool, optional, default: false)*: Overwrite existing template in target storage domain if present.
+  - `dry_run` *(bool, optional, default: false)*: Validates export parameters without exporting.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag.
+- **Outputs (`TemplateResult`):**
+  - `success`: Boolean execution status.
+  - `action`: `"export"`.
+  - `template_id`: Template UUID.
+  - `template_name`: Template name.
+  - `message`: Outcome description.
+
+---
+
+### 158. `ovirt_host_delete`
+
+Permanently remove and decommission a hypervisor host from oVirt / OLVM engine inventory. Strict safety guards require the hypervisor host to be in `maintenance` state and verify that no active virtual machines or SPM roles remain on the host prior to removal, unless `force=True` is provided.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Hypervisor host display name or UUID.
+  - `force` *(bool, optional, default: false)*: Force removal even if SPM or active VMs are detected.
+  - `confirm` *(bool, optional, default: false)*: Safe-mode confirmation flag. Mandatory when `MCP_SAFE_MODE=true`.
+  - `dry_run` *(bool, optional, default: false)*: Simulates deletion and validates safety guards without removing the host.
+- **Outputs (`HostDeleteResult`):**
+  - `success`: Boolean execution status.
+  - `host_id`: Hypervisor host UUID.
+  - `host_name`: Hypervisor host name.
+  - `force`: Whether force removal was requested.
+  - `dry_run`: Boolean simulation flag.
+  - `message`: Outcome description.
+
+---
+
+### 159. `ovirt_host_create`
+
+Add, provision, and enroll a new physical hypervisor host into an oVirt / OLVM virtualization cluster. Automatically triggers the Engine's Ansible deployment automation (`ovirt-host-deploy`) to install VDSM, enroll host PKI TLS certificates, and configure management network interfaces. Includes pre-flight validations verifying cluster existence and checking for duplicate hostnames or IP addresses.
+
+- **Inputs:**
+  - `name` *(string, required)*: Display name or FQDN for the new host in oVirt.
+  - `address` *(string, required)*: Reachable management IP address or DNS hostname.
+  - `cluster` *(string, required)*: Display name or UUID of the cluster to assign the host to.
+  - `root_password` *(string, optional)*: Root password for SSH-based deployment.
+  - `ssh_port` *(integer, optional, default: 22)*: SSH port for host connectivity.
+  - `comment` *(string, optional)*: Administrative comment.
+  - `activate` *(bool, optional, default: true)*: Whether to automatically activate the host after deployment.
+  - `reboot` *(bool, optional, default: true)*: Whether to automatically reboot the host if needed during deployment.
+  - `deploy_hosted_engine` *(bool, optional, default: false)*: Whether to configure the host for hosted engine execution.
+  - `dry_run` *(bool, optional, default: false)*: Simulates host creation and pre-flight validation without modifying the cluster.
+- **Outputs (`HostCreateResult`):**
+  - `success`: Boolean execution status.
+  - `host_id`: Newly created hypervisor host UUID.
+  - `host_name`: Host display name.
+  - `address`: Host IP address / FQDN.
+  - `cluster_id`: Target cluster UUID.
+  - `cluster_name`: Target cluster name.
+  - `status`: Initial host status (`"installing"`).
+  - `dry_run`: Boolean simulation flag.
+  - `message`: Outcome description.
+
+---
+
+### 160. `ovirt_disk_get`
+
+Retrieve comprehensive technical specifications, capacity metrics, format, storage domain hosting, and real-time I/O telemetry for a specific virtual disk by name/alias or UUID.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Virtual disk name/alias or UUID.
+- **Outputs (`DiskDetail`):**
+  - `id`: Virtual disk UUID.
+  - `name`: Virtual disk name/alias.
+  - `status`: Status (`"ok"`, `"locked"`, `"illegal"`).
+  - `provisioned_size_gb`: Allocated logical capacity in gigabytes.
+  - `actual_size_gb`: Actual physical storage consumed in gigabytes.
+  - `disk_format`: Format (`"cow"` or `"raw"`).
+  - `content_type`: Content type (`"data"`, `"iso"`, `"ovf_store"`).
+  - `storage_domain_name`: Hosting storage domain display name.
+  - `storage_domain_id`: Hosting storage domain UUID.
+  - `backup`: Backup policy (`"incremental"`, `"none"`).
+  - `backup_mode`: Incremental backup mode.
+  - `shareable`: Whether disk is shareable.
+  - `read_only`: Whether attached read-only.
+  - `wipe_after_delete`: Scrubbing flag.
+  - `sparse`: Thin-provisioning flag.
+  - `qcow_version`: QCOW format version (`"qcow2_v3"`).
+  - `sgio`: SCSI generic filtering policy.
+  - `propagate_errors`: Disk error propagation policy.
+  - `description`: User description.
+  - `comment`: Administrative comment.
+  - `io_stats`: Real-time throughput, IOPS, and latency telemetry (`DiskIoStats`).
+
+---
+
+### 161. `ovirt_disk_delete`
+
+Permanently remove and delete a virtual disk from its hosting storage domain in oVirt / OLVM. Validates that the disk is not in locked state prior to deletion. Requires `confirm=True` when Safe Mode is enabled (`MCP_SAFE_MODE=true`).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Name/alias or UUID of the virtual disk to delete.
+  - `dry_run` *(bool, optional, default: false)*: Simulates deletion and validates state without removing the virtual disk.
+  - `confirm` *(bool, optional, default: false)*: Confirmation flag required in Safe Mode.
+- **Outputs (`DiskDeleteResult`):**
+  - `success`: Boolean execution status.
+  - `disk_id`: Virtual disk UUID.
+  - `disk_name`: Virtual disk name/alias.
+  - `dry_run`: Boolean simulation flag.
+  - `message`: Outcome description.
+
+---
+
+### 162. `ovirt_vm_clone`
+
+Clone an existing virtual machine to create a new independent VM with optional target cluster, destination storage domain, and snapshot collapsing (`discard_snapshots`). Supports synchronous wait until clone provisioning completes.
+
+- **Inputs:**
+  - `source_name_or_id` *(string, required)*: Display name or UUID of the source virtual machine.
+  - `new_name` *(string, required)*: Display name for the newly created cloned virtual machine.
+  - `cluster` *(string, optional)*: Target cluster name or UUID. Defaults to source VM's cluster.
+  - `storage_domain` *(string, optional)*: Destination storage domain name or UUID where cloned disks will reside.
+  - `discard_snapshots` *(bool, optional, default: false)*: Collapse all snapshots into a single active disk image during cloning.
+  - `wait` *(bool, optional, default: false)*: Wait synchronously until the cloned VM reaches `'down'` (provisioned) state.
+  - `timeout_seconds` *(integer, optional, default: 120)*: Maximum wait duration in seconds.
+  - `dry_run` *(bool, optional, default: false)*: Simulates cloning and verifies naming uniqueness without creating the VM.
+- **Outputs (`VmCloneResult`):**
+  - `success`: Boolean execution status.
+  - `source_vm_id`: Source VM UUID.
+  - `source_vm_name`: Source VM name.
+  - `cloned_vm_id`: Cloned VM UUID.
+  - `cloned_vm_name`: Cloned VM name.
+  - `dry_run`: Boolean simulation flag.
+  - `message`: Outcome description.
+
+---
+
+### 163. `ovirt_cluster_create`
+
+Create a new virtualization cluster in a target Data Center in oVirt / OLVM, specifying CPU type, description, comment, and compatibility version.
+
+- **Inputs:**
+  - `name` *(string, required)*: Display name for the new cluster.
+  - `data_center` *(string, required)*: Target Data Center display name or UUID.
+  - `cpu_type` *(string, optional)*: CPU model name (e.g. `'Intel SandyBridge Family'`, `'AMD EPYC'`).
+  - `description` *(string, optional)*: Cluster description.
+  - `comment` *(string, optional)*: Administrative comment.
+  - `compatibility_version` *(string, optional)*: Compatibility level version string (e.g. `'4.7'`).
+  - `dry_run` *(bool, optional, default: false)*: Validates cluster parameters and target Data Center without creating.
+- **Outputs (`ClusterOperationResult`):**
+  - `success`: Boolean execution status.
+  - `cluster_id`: Newly created cluster UUID.
+  - `cluster_name`: Cluster display name.
+  - `action`: `"create"`.
+  - `dry_run`: Boolean simulation flag.
+  - `message`: Outcome description.
+
+---
+
+### 164. `ovirt_cluster_delete`
+
+Delete an empty virtualization cluster from oVirt / OLVM. Verifies that no hypervisor hosts or virtual machines remain attached to the cluster prior to removal. Requires `confirm=True` when Safe Mode is enabled.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Cluster display name or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Validates empty state without removing the cluster.
+  - `confirm` *(bool, optional, default: false)*: Confirmation flag required in Safe Mode.
+- **Outputs (`ClusterOperationResult`):**
+  - `success`: Boolean execution status.
+  - `cluster_id`: Cluster UUID.
+  - `cluster_name`: Cluster display name.
+  - `action`: `"delete"`.
+  - `dry_run`: Boolean simulation flag.
+  - `message`: Outcome description.
+
+---
+
+### 165. `ovirt_datacenter_create`
+
+Create a new Data Center in oVirt / OLVM with shared or local storage domain architecture, description, comment, compatibility level, and quota enforcement mode.
+
+- **Inputs:**
+  - `name` *(string, required)*: Display name for the new Data Center.
+  - `local_storage` *(bool, optional, default: false)*: Configure Data Center for local storage domains instead of shared storage.
+  - `description` *(string, optional)*: Description.
+  - `comment` *(string, optional)*: Administrative comment.
+  - `compatibility_version` *(string, optional)*: Compatibility version string (e.g. `'4.7'`).
+  - `quota_mode` *(string, optional, default: "disabled")*: Quota enforcement mode (`"audit"`, `"enabled"`, `"disabled"`).
+  - `dry_run` *(bool, optional, default: false)*: Validates parameters without creating the Data Center.
+- **Outputs (`DataCenterOperationResult`):**
+  - `success`: Boolean execution status.
+  - `data_center_id`: Newly created Data Center UUID.
+  - `data_center_name`: Data Center name.
+  - `action`: `"create"`.
+  - `dry_run`: Boolean simulation flag.
+  - `message`: Outcome description.
+
+---
+
+### 166. `ovirt_datacenter_delete`
+
+Delete a Data Center from oVirt / OLVM inventory. Pre-flight verification enforces that no clusters or storage domains remain attached, unless `force=True` is explicitly specified. Requires `confirm=True` when Safe Mode is enabled.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Data Center display name or UUID.
+  - `force` *(bool, optional, default: false)*: Force removal even if clusters or storage domains are attached.
+  - `dry_run` *(bool, optional, default: false)*: Validates removal without deleting the Data Center.
+  - `confirm` *(bool, optional, default: false)*: Confirmation flag required in Safe Mode.
+- **Outputs (`DataCenterOperationResult`):**
+  - `success`: Boolean execution status.
+  - `data_center_id`: Data Center UUID.
+  - `data_center_name`: Data Center name.
+  - `action`: `"delete"`.
+  - `dry_run`: Boolean simulation flag.
+  - `message`: Outcome description.
+
+---
+
+### 167. `ovirt_host_update`
+
+Update hypervisor host configuration in oVirt / OLVM, including display name, administrative comment, or moving the host to a different cluster (host must be in maintenance mode for cluster relocation).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Hypervisor host display name or UUID.
+  - `name` *(string, optional)*: Updated display name.
+  - `comment` *(string, optional)*: Updated comment.
+  - `cluster` *(string, optional)*: Target cluster name or UUID for relocation.
+  - `dry_run` *(bool, optional, default: false)*: Simulates update and validates host state without applying changes.
+- **Outputs (`HostDetail`):**
+  - Full updated host detail representation including hardware info, cluster, and status.
+
+---
+
+### 168. `ovirt_network_update`
+
+Update logical network properties in oVirt / OLVM, including display name, description, comment, 802.1Q VLAN tag ID, or MTU payload size.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Logical network display name or UUID.
+  - `name` *(string, optional)*: Updated network name.
+  - `description` *(string, optional)*: Updated description.
+  - `comment` *(string, optional)*: Updated comment.
+  - `vlan_tag` *(integer, optional)*: Updated 802.1Q VLAN ID (0-4094).
+  - `mtu` *(integer, optional)*: Updated MTU in bytes (68-65535, e.g. 1500 or 9000).
+  - `dry_run` *(bool, optional, default: false)*: Simulates network updates without applying changes.
+- **Outputs (`LogicalNetworkDetail`):**
+  - Full updated logical network specification including VLAN tag, MTU, and attachments.
+
+---
+
+### 169. `ovirt_template_update`
+
+Update virtual machine template metadata, including template name, description, or comment.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Template display name or UUID.
+  - `name` *(string, optional)*: Updated template name.
+  - `description` *(string, optional)*: Updated description.
+  - `comment` *(string, optional)*: Updated comment.
+  - `dry_run` *(bool, optional, default: false)*: Simulates template update without applying changes.
+- **Outputs (`TemplateDetail`):**
+  - Full updated template detail representation including OS type, CPU, memory, and disks.
+
+---
+
+### 170. `ovirt_storage_domain_update`
+
+Update Storage Domain attributes in oVirt / OLVM, including name, description, comment, warning low space threshold percentage (0-100%), and critical space action blocking threshold in GB.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Storage domain display name or UUID.
+  - `name` *(string, optional)*: Updated storage domain name.
+  - `description` *(string, optional)*: Updated description.
+  - `comment` *(string, optional)*: Updated comment.
+  - `warning_low_space_indicator` *(integer, optional)*: Low space warning threshold in percent (0-100).
+  - `critical_space_action_blocker` *(integer, optional)*: Critical space blocking threshold in gigabytes (GB).
+  - `dry_run` *(bool, optional, default: false)*: Simulates storage domain update without applying changes.
+- **Outputs (`StorageDomainDetail`):**
+  - Full updated storage domain detail representation including capacity metrics, thresholds, and status.
+
+---
+
+### 171. `ovirt_vm_initialization_set`
+
+Configure or modify guest OS initialization parameters (Linux Cloud-Init or Windows Sysprep) and network configuration on a virtual machine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `cloud_init_hostname` *(string, optional)*: Guest hostname to set via Cloud-Init.
+  - `cloud_init_user` *(string, optional)*: Default administrative user account name.
+  - `cloud_init_password` *(string, optional)*: Password for default administrative user.
+  - `cloud_init_ssh_keys` *(string, optional)*: Public SSH authorized keys (newline-separated).
+  - `cloud_init_script` *(string, optional)*: Custom cloud-init user-data YAML/shell script payload.
+  - `cloud_init_dns_servers` *(string, optional)*: Space-separated list of DNS nameserver IP addresses.
+  - `cloud_init_dns_search` *(string, optional)*: DNS domain search string.
+  - `cloud_init_regenerate_ssh_keys` *(bool, optional)*: Instructs guest to regenerate host SSH host keys.
+  - `cloud_init_timezone` *(string, optional)*: System timezone identifier (e.g. 'UTC', 'Europe/Budapest').
+  - `sysprep_domain` *(string, optional)*: Windows Active Directory domain to join.
+  - `sysprep_active_directory_ou` *(string, optional)*: Organizational unit (OU) path in Active Directory.
+  - `sysprep_admin_password` *(string, optional)*: Local Administrator password.
+  - `sysprep_user_name` *(string, optional)*: Local user account name to configure.
+  - `sysprep_license_key` *(string, optional)*: Windows product license key.
+  - `sysprep_org_name` *(string, optional)*: Organization / Company name.
+  - `sysprep_input_locale` *(string, optional)*: Keyboard layout / input locale.
+  - `sysprep_system_locale` *(string, optional)*: System locale.
+  - `sysprep_ui_language` *(string, optional)*: UI language code.
+  - `sysprep_user_locale` *(string, optional)*: User locale.
+  - `sysprep_custom_script` *(string, optional)*: Custom script payload for Windows Sysprep answer file.
+  - `sysprep_timezone` *(string, optional)*: Windows timezone string.
+  - `nic_name` *(string, optional)*: Target virtual network interface name (defaults to 'eth0').
+  - `nic_boot_protocol` *(string, optional)*: 'dhcp', 'static', or 'none'.
+  - `nic_ip_address` *(string, optional)*: Static IPv4 address for guest NIC.
+  - `nic_netmask` *(string, optional)*: Subnet mask for static IPv4 configuration.
+  - `nic_gateway` *(string, optional)*: Default gateway for static IPv4 configuration.
+  - `clear` *(bool, optional, default: false)*: Clears any existing guest initialization settings from the VM.
+  - `dry_run` *(bool, optional, default: false)*: Simulates initialization changes without applying.
+  - `confirm` *(bool, optional, default: false)*: Required confirmation in Safe Mode when clear=True.
+- **Outputs (`VmInitializationResult`):**
+  - Result status, configured host_name, user_name, initialization_type ('cloud_init' or 'sysprep').
+
+---
+
+### 172. `ovirt_vm_initialization_get`
+
+Retrieve Cloud-Init or Windows Sysprep initialization configuration currently assigned to a virtual machine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+- **Outputs (`VmInitializationInfo`):**
+  - Type ('cloud_init', 'sysprep', or None), host name, user name, authorized SSH keys, custom script, and network configuration.
+
+---
+
+### 173. `ovirt_disk_convert`
+
+Convert virtual disk format between COW (qcow2 thin-provisioned) and RAW (preallocated), or adjust sparse allocation.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Disk alias or UUID.
+  - `target_format` *(string, required)*: Desired format ('cow' or 'raw').
+  - `sparse` *(bool, optional)*: Allocation policy (True for sparse/thin, False for preallocated).
+  - `wait` *(bool, optional, default: false)*: Blocks synchronously until conversion finishes.
+  - `timeout_seconds` *(integer, optional, default: 300)*: Maximum wait timeout.
+  - `dry_run` *(bool, optional, default: false)*: Simulates disk conversion without applying.
+  - `confirm` *(bool, optional, default: false)*: Required confirmation flag in Safe Mode.
+- **Outputs (`DiskOperationResult`):**
+  - Operation result, disk UUID, and conversion status.
+
+---
+
+### 174. `ovirt_disk_lun_refresh`
+
+Refresh capacity and underlying volume status of a direct LUN virtual disk.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Direct LUN disk alias or UUID.
+  - `dry_run` *(bool, optional, default: false)*: Simulates refresh without calling engine.
+- **Outputs (`DiskOperationResult`):**
+  - Operation result and direct LUN refresh status.
+
+---
+
+### 175. `ovirt_storage_domain_unregistered_vms_list`
+
+List unregistered virtual machines available on a storage domain (for disaster recovery and re-registration).
+
+- **Inputs:**
+  - `storage_domain` *(string, required)*: Storage domain display name or UUID.
+- **Outputs (`list[VmSummary]`):**
+  - List of unregistered VM summary objects available for import/registration.
+
+---
+
+### 176. `ovirt_storage_domain_unregistered_vm_register`
+
+Register an unregistered virtual machine from a storage domain into a target cluster.
+
+- **Inputs:**
+  - `storage_domain` *(string, required)*: Storage domain name or UUID where the VM resides.
+  - `vm_id` *(string, required)*: UUID of the unregistered virtual machine.
+  - `cluster` *(string, required)*: Target cluster name or UUID.
+  - `new_name` *(string, optional)*: Optional new display name for the registered VM.
+  - `allow_partial_import` *(bool, optional, default: false)*: Allow registering even if some disks are missing.
+  - `reassign_bad_macs` *(bool, optional, default: true)*: Reassign conflicting MAC addresses automatically.
+  - `dry_run` *(bool, optional, default: false)*: Simulates registration without importing.
+- **Outputs (`VmCreateResult`):**
+  - Registered virtual machine details, assigned cluster, and UUID.
+
+---
+
+### 177. `ovirt_host_copy_networks`
+
+Copy logical network setup and NIC configuration from a source hypervisor host to a target host.
+
+- **Inputs:**
+  - `source_host` *(string, required)*: Source host name or UUID with reference network setup.
+  - `target_host` *(string, required)*: Target host name or UUID to configure.
+  - `dry_run` *(bool, optional, default: false)*: Simulates copying without executing.
+  - `confirm` *(bool, optional, default: false)*: Required confirmation flag in Safe Mode.
+- **Outputs (`HostLifecycleResult`):**
+  - Operation status and target host status.
+
+---
+
+### 178. `ovirt_host_approve`
+
+Approve a pre-installed hypervisor host for integration into a cluster.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Pending host display name or UUID.
+  - `cluster` *(string, optional)*: Target cluster name or UUID.
+  - `activate` *(bool, optional, default: true)*: Automatically activates host upon approval.
+  - `reboot` *(bool, optional, default: true)*: Reboots host after approval.
+  - `dry_run` *(bool, optional, default: false)*: Simulates approval without applying.
+- **Outputs (`HostLifecycleResult`):**
+  - Host lifecycle result and current status.
+
+---
+
+### 179. `ovirt_cluster_upgrade`
+
+Manage cluster-wide rolling upgrade (start, stop, or update_progress).
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Cluster display name or UUID.
+  - `action` *(string, optional, default: 'start')*: 'start', 'stop', or 'update_progress'.
+  - `percent_complete` *(integer, optional)*: Progress percentage when action is update_progress.
+  - `correlation_id` *(string, optional)*: Engine correlation tracking identifier.
+  - `dry_run` *(bool, optional, default: false)*: Simulates upgrade action.
+  - `confirm` *(bool, optional, default: false)*: Required confirmation flag in Safe Mode for start/stop.
+- **Outputs (`ClusterOperationResult`):**
+  - Cluster upgrade operation status and details.
+
+---
+
+### 180. `ovirt_vm_watchdog_list`
+
+List hardware watchdog devices attached to a virtual machine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+- **Outputs (`list[VmWatchdogInfo]`):**
+  - List of watchdog devices with model ('i6300esb', 'diag288') and action ('reset', 'poweroff', 'pause', 'dump', 'none').
+
+---
+
+### 181. `ovirt_vm_watchdog_add`
+
+Add a virtual hardware watchdog device to a virtual machine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `model` *(string, optional, default: 'i6300esb')*: Watchdog hardware model ('i6300esb' or 'diag288').
+  - `action` *(string, optional, default: 'reset')*: Expiration action ('reset', 'poweroff', 'pause', 'dump', 'none').
+  - `dry_run` *(bool, optional, default: false)*: Simulates adding watchdog device.
+- **Outputs (`VmHardwareResult`):**
+  - Hardware device result and configuration confirmation.
+
+---
+
+### 182. `ovirt_vm_watchdog_remove`
+
+Remove a watchdog device from a virtual machine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `watchdog_id` *(string, optional)*: Specific watchdog device UUID (defaults to first watchdog found).
+  - `dry_run` *(bool, optional, default: false)*: Simulates removal.
+  - `confirm` *(bool, optional, default: false)*: Required confirmation flag in Safe Mode.
+- **Outputs (`VmHardwareResult`):**
+  - Hardware device result and removal confirmation.
+
+---
+
+### 183. `ovirt_vm_host_device_list`
+
+List physical host devices (SR-IOV, GPU, PCI passthrough) attached to a virtual machine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+- **Outputs (`list[VmHostDeviceInfo]`):**
+  - List of host devices with device name, vendor, product, driver, and IOMMU group.
+
+---
+
+### 184. `ovirt_vm_host_device_attach`
+
+Attach a physical host device (PCI passthrough, SR-IOV vGPU) to a virtual machine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `host_device_name` *(string, required)*: System name of the host device (e.g. 'pci_0000_00_16_3').
+  - `dry_run` *(bool, optional, default: false)*: Simulates attachment.
+- **Outputs (`VmHardwareResult`):**
+  - Hardware device result and attachment status.
+
+---
+
+### 185. `ovirt_vm_host_device_detach`
+
+Detach a physical host device from a virtual machine.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: VM display name or UUID.
+  - `host_device_name` *(string, required)*: System name of the host device to detach.
+  - `dry_run` *(bool, optional, default: false)*: Simulates detachment.
+  - `confirm` *(bool, optional, default: false)*: Required confirmation flag in Safe Mode.
+- **Outputs (`VmHardwareResult`):**
+  - Hardware device result and detachment status.
+
+---
+
+### 186. `ovirt_vm_snapshot_clone`
+
+Create a new independent virtual machine cloned directly from an existing point-in-time snapshot.
+
+- **Inputs:**
+  - `name_or_id` *(string, required)*: Source VM display name or UUID.
+  - `snapshot_id` *(string, required)*: UUID of the snapshot to clone from.
+  - `new_name` *(string, required)*: Display name for the newly cloned virtual machine.
+  - `cluster` *(string, optional)*: Optional target cluster name or UUID (defaults to source VM's cluster).
+  - `wait` *(bool, optional, default: false)*: Waits synchronously until the new VM finishes cloning and reaches 'down' status.
+  - `timeout_seconds` *(integer, optional, default: 180)*: Maximum wait timeout.
+  - `dry_run` *(bool, optional, default: false)*: Simulates snapshot clone without creating the VM.
+- **Outputs (`VmCloneResult`):**
+  - Source VM ID/name, cloned VM ID/name, and operation confirmation message.
+
+
+
 

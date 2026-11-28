@@ -176,6 +176,22 @@ class StorageDomainDetail(StorageDomainSummary):
     """Deep configuration, SAN/NAS hardware serials, and telemetry for an oVirt / OLVM Storage Domain."""
 
     description: str | None = Field(default=None, description="Description of the storage domain")
+    comment: str | None = Field(default=None, description="Free-text user comment")
+    block_size: int | None = Field(
+        default=None, description="Underlying filesystem/block device block size in bytes"
+    )
+    discard_after_delete: bool | None = Field(
+        default=None, description="Whether discard/TRIM is invoked after disk deletion"
+    )
+    external_status: str | None = Field(
+        default=None, description="External health status ('ok', 'warning', 'error')"
+    )
+    backup: bool | None = Field(
+        default=None, description="Whether this domain is configured for backup"
+    )
+    master: bool | None = Field(
+        default=None, description="Whether this is the master storage domain for the data center"
+    )
     warning_low_space_indicator: int | None = Field(
         default=None, description="Threshold percentage for low space warning"
     )
@@ -231,4 +247,7 @@ class StorageDomainResult(BaseModel):
         default=None, description="Name of the affected Data Center if applicable"
     )
     status: str | None = Field(default=None, description="New status of the storage domain")
+    dry_run: bool = Field(
+        default=False, description="Whether this was a dry-run simulation without execution"
+    )
     message: str = Field(description="Human-readable outcome description")

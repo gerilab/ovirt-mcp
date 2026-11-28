@@ -10,6 +10,7 @@ from ovirt_mcp.models.host_network import HostBondResult
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
+    require_host_status,
     require_mutation_allowed,
 )
 
@@ -54,6 +55,13 @@ def create_host_bond_tool(
     hosts_svc = sys_svc.hosts_service()
 
     host = client.find_resource_by_id_or_name(hosts_svc, host_name_or_id, "host")
+    curr_status = getattr(getattr(host, "status", None), "value", None)
+    require_host_status(
+        str(host.name),
+        curr_status,
+        allowed_statuses=("up", "maintenance", "non_operational"),
+        action_name="create_host_bond",
+    )
     h_svc = hosts_svc.host_service(host.id)
 
     # Verify existing host NICs
@@ -164,6 +172,13 @@ def delete_host_bond_tool(
     hosts_svc = sys_svc.hosts_service()
 
     host = client.find_resource_by_id_or_name(hosts_svc, host_name_or_id, "host")
+    curr_status = getattr(getattr(host, "status", None), "value", None)
+    require_host_status(
+        str(host.name),
+        curr_status,
+        allowed_statuses=("up", "maintenance", "non_operational"),
+        action_name="delete_host_bond",
+    )
     h_svc = hosts_svc.host_service(host.id)
 
     # Verify bond exists

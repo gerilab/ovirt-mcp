@@ -29,6 +29,22 @@ class VmSummary(BaseModel):
     ha_enabled: bool = Field(
         default=False, description="Whether High Availability is enabled for this VM"
     )
+    delete_protected: bool | None = Field(
+        default=None, description="Whether the VM is protected against accidental deletion"
+    )
+    has_illegal_images: bool | None = Field(
+        default=None, description="Whether the VM has illegal or corrupt disk images"
+    )
+    next_run_configuration_exists: bool | None = Field(
+        default=None,
+        description="Whether configuration changes are staged and require a restart to take effect",
+    )
+    status_detail: str | None = Field(
+        default=None, description="Detailed status message if available"
+    )
+    creation_time: str | None = Field(default=None, description="Timestamp when VM was created")
+    start_time: str | None = Field(default=None, description="Timestamp when VM was last started")
+    stop_time: str | None = Field(default=None, description="Timestamp when VM was stopped")
     description: str | None = Field(default=None, description="User description or comment")
 
 
@@ -367,6 +383,113 @@ class VmRuntimeTelemetry(BaseModel):
     )
 
 
+class VmNicConfiguration(BaseModel):
+    """Network interface IP configuration in VM initialization."""
+
+    name: str | None = Field(default=None, description="Interface device name, e.g. eth0")
+    boot_protocol: str | None = Field(
+        default=None, description="Boot protocol: dhcp, static, autoconf"
+    )
+    ip_address: str | None = Field(default=None, description="Static IPv4 address")
+    netmask: str | None = Field(default=None, description="Subnet mask")
+    gateway: str | None = Field(default=None, description="Default gateway")
+    on_boot: bool | None = Field(default=True, description="Whether interface starts on boot")
+
+
+class VmInitializationInfo(BaseModel):
+    """Cloud-Init or Sysprep initialization details for a VM."""
+
+    type: str | None = Field(
+        default=None, description="Initialization type: cloud_init, sysprep, or custom"
+    )
+    host_name: str | None = Field(default=None, description="Configured guest hostname")
+    user_name: str | None = Field(default=None, description="Configured user name")
+    custom_script: str | None = Field(
+        default=None, description="Custom initialization script or user-data"
+    )
+    authorized_ssh_keys: str | None = Field(default=None, description="Authorized public SSH keys")
+    regenerate_ssh_keys: bool | None = Field(
+        default=None, description="Whether guest SSH keys are regenerated"
+    )
+    timezone: str | None = Field(default=None, description="Configured guest timezone")
+    dns_servers: str | None = Field(default=None, description="Configured DNS servers")
+    dns_search: str | None = Field(default=None, description="Configured DNS search domains")
+    domain: str | None = Field(default=None, description="Active Directory or Windows domain")
+    active_directory_ou: str | None = Field(default=None, description="Active Directory OU")
+    org_name: str | None = Field(default=None, description="Organization name (Sysprep)")
+    windows_license_key: str | None = Field(
+        default=None, description="Windows product license key (Sysprep)"
+    )
+    input_locale: str | None = Field(default=None, description="Input locale (Sysprep)")
+    system_locale: str | None = Field(default=None, description="System locale (Sysprep)")
+    ui_language: str | None = Field(default=None, description="UI language (Sysprep)")
+    user_locale: str | None = Field(default=None, description="User locale (Sysprep)")
+    nic_configurations: list[VmNicConfiguration] = Field(
+        default_factory=list, description="Static network interface configurations"
+    )
+
+
+class VmInitializationResult(BaseModel):
+    """Result of configuring or clearing VM initialization (Cloud-Init or Sysprep)."""
+
+    success: bool = Field(description="Whether the initialization operation succeeded")
+    action: str = Field(description="Executed action: 'set', 'clear', 'update'")
+    vm_id: str = Field(description="UUID of the affected virtual machine")
+    vm_name: str = Field(description="Name of the affected virtual machine")
+    initialization_type: str | None = Field(
+        default=None, description="Type of initialization configured: cloud_init, sysprep, or None"
+    )
+    host_name: str | None = Field(default=None, description="Configured guest hostname")
+    user_name: str | None = Field(default=None, description="Configured user name")
+    has_custom_script: bool = Field(
+        default=False, description="Whether custom script or user-data is present"
+    )
+    authorized_ssh_keys_set: bool = Field(
+        default=False, description="Whether SSH authorized keys were configured"
+    )
+    regenerate_ssh_keys: bool | None = Field(
+        default=None, description="Whether SSH host keys are regenerated"
+    )
+    domain: str | None = Field(default=None, description="Configured Windows domain (Sysprep)")
+    org_name: str | None = Field(default=None, description="Configured Organization name (Sysprep)")
+    dry_run: bool = Field(
+        default=False, description="Whether this action was simulated in dry_run mode"
+    )
+    message: str = Field(description="Human-readable outcome description")
+
+
+class VmWatchdogInfo(BaseModel):
+    """Virtual machine hardware watchdog device configuration."""
+
+    id: str = Field(description="Watchdog device UUID")
+    model: str = Field(description="Watchdog hardware model (e.g. i6300esb, diag288)")
+    action: str = Field(
+        description="Action triggered on timer expiration (reset, poweroff, pause, dump, none)"
+    )
+
+
+class VmHostDeviceInfo(BaseModel):
+    """Host device (PCI, SR-IOV, GPU) attached to a virtual machine."""
+
+    name: str = Field(description="Device name / PCI address (e.g. pci_0000_00_16_3)")
+    product: str | None = Field(default=None, description="Product description")
+    vendor: str | None = Field(default=None, description="Hardware vendor name")
+    driver: str | None = Field(default=None, description="Active Linux kernel driver module")
+    iommu_group: int | None = Field(default=None, description="IOMMU group for PCI passthrough")
+
+
+class VmHardwareResult(BaseModel):
+    """Result of modifying virtual machine hardware devices (watchdog, host device)."""
+
+    success: bool = Field(description="Whether the device operation succeeded")
+    vm_id: str = Field(description="UUID of the virtual machine")
+    vm_name: str = Field(description="Name of the virtual machine")
+    device_type: str = Field(description="Type of device modified: 'watchdog', 'host_device'")
+    action: str = Field(description="Executed action: 'add', 'remove', 'attach', 'detach'")
+    dry_run: bool = Field(default=False, description="Whether this was a dry-run simulation")
+    message: str = Field(description="Human-readable outcome description")
+
+
 class VmCompactDetail(BaseModel):
     """Token-efficient, lightweight virtual machine details for small context LLMs."""
 
@@ -405,6 +528,32 @@ class VmDetail(BaseModel):
     host_name: str | None = Field(default=None, description="Running host name, if UP")
     template_name: str | None = Field(default=None, description="Base template name")
     description: str | None = Field(default=None, description="User description or comment")
+    comment: str | None = Field(default=None, description="Free-text user comment on the VM")
+    origin: str | None = Field(
+        default=None, description="Origin / hypervisor provenance of the VM (e.g. ovirt, vmware)"
+    )
+    stateless: bool | None = Field(
+        default=None, description="Whether the VM runs in stateless mode"
+    )
+    type: str | None = Field(
+        default=None, description="VM optimization type (server, desktop, high_performance)"
+    )
+    delete_protected: bool | None = Field(
+        default=None, description="Whether the VM is protected against accidental deletion"
+    )
+    has_illegal_images: bool | None = Field(
+        default=None, description="Whether the VM has illegal or corrupt disk images"
+    )
+    next_run_configuration_exists: bool | None = Field(
+        default=None,
+        description="Whether configuration changes are staged and require a restart to take effect",
+    )
+    creation_time: str | None = Field(default=None, description="Timestamp when VM was created")
+    start_time: str | None = Field(default=None, description="Timestamp when VM was last started")
+    stop_time: str | None = Field(default=None, description="Timestamp when VM was stopped")
+    stop_reason: str | None = Field(
+        default=None, description="Reason the VM transitioned to down state"
+    )
 
     cpu: VmCpuDetails = Field(description="CPU topology, cores, pinning, and scheduling")
     memory: VmMemoryPolicy = Field(
@@ -438,6 +587,10 @@ class VmDetail(BaseModel):
     telemetry: VmRuntimeTelemetry | None = Field(
         default=None,
         description="Real-time operational telemetry, CPU/RAM utilization, and aggregate I/O",
+    )
+    initialization: VmInitializationInfo | None = Field(
+        default=None,
+        description="Cloud-Init or Sysprep initialization details",
     )
 
 
@@ -570,5 +723,20 @@ class VmSnapshotResult(BaseModel):
     dry_run: bool = Field(
         default=False,
         description="Whether this action was simulated in dry_run mode without execution",
+    )
+    message: str = Field(description="Human-readable outcome description")
+
+
+class VmCloneResult(BaseModel):
+    """Result of a virtual machine clone operation."""
+
+    success: bool = Field(description="Whether VM clone succeeded")
+    source_vm_id: str = Field(description="UUID of the cloned source virtual machine")
+    source_vm_name: str = Field(description="Name of the cloned source virtual machine")
+    cloned_vm_id: str = Field(description="UUID of the newly created clone virtual machine")
+    cloned_vm_name: str = Field(description="Name of the newly created clone virtual machine")
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this was simulated in dry_run mode without execution",
     )
     message: str = Field(description="Human-readable outcome description")

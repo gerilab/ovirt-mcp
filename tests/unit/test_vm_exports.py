@@ -56,6 +56,7 @@ def _setup_mock_context() -> dict[str, Any]:
 
     mock_vm = MagicMock(id="vm-1")
     mock_vm.name = "AppVM"
+    mock_vm.status = MagicMock(value="down")
     mock_sd = MagicMock(id="sd-export")
     mock_sd.name = "ExportDomain"
     mock_cluster = MagicMock(id="cl-1")
@@ -64,6 +65,7 @@ def _setup_mock_context() -> dict[str, Any]:
     mock_host.name = "Host01"
     mock_disk = MagicMock(id="d-1")
     mock_disk.name = "Disk01"
+    mock_disk.status = MagicMock(value="ok")
 
     return {
         "client": mock_client,

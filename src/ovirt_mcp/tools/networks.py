@@ -12,6 +12,7 @@ from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
     require_mutation_allowed,
+    require_vm_status,
 )
 
 logger = logging.getLogger("ovirt_mcp.tools.networks")
@@ -147,9 +148,12 @@ def add_vm_nic_tool(
     vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
     vm_id = str(vm.id)
     vm_name = str(vm.name)
+    require_vm_status(
+        vm_name, getattr(vm, "status", None), ("up", "down", "paused"), action_name="add_vm_nic"
+    )
     vm_service = vms_service.vm_service(vm_id)
 
-    prof = client.find_resource_by_id_or_name(profiles_service, profile, "vnic profile")
+    prof = client.find_resource_by_id_or_name(profiles_service, profile, "vnic_profile")
     prof_id = str(prof.id)
 
     try:
@@ -232,6 +236,9 @@ def remove_vm_nic_tool(
     vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
     vm_id = str(vm.id)
     vm_name = str(vm.name)
+    require_vm_status(
+        vm_name, getattr(vm, "status", None), ("up", "down", "paused"), action_name="remove_vm_nic"
+    )
     vm_service = vms_service.vm_service(vm_id)
 
     raw_nics = vm_service.nics_service().list()

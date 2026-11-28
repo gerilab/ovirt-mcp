@@ -32,9 +32,29 @@ class HostSummary(BaseModel):
     update_available: bool | None = Field(
         default=None, description="Whether OS or package updates are available for this host"
     )
+    reinstallation_required: bool | None = Field(
+        default=None,
+        description="True if the host requires reinstallation (e.g. out of sync VDSM, certs, or packages).",
+    )
+    status_detail: str | None = Field(
+        default=None,
+        description="Detailed reason for current host status (e.g. why host is non-operational).",
+    )
+    external_status: str | None = Field(
+        default=None,
+        description="External health status: 'ok', 'info', 'warning', 'error'.",
+    )
     iscsi_initiator_name: str | None = Field(
         default=None,
         description="Host iSCSI initiator name / IQN (e.g. 'iqn.1994-05.com.redhat:...').",
+    )
+    comment: str | None = Field(default=None, description="Free-text comment on the host")
+    description: str | None = Field(default=None, description="Description of the host")
+    kdump_status: str | None = Field(
+        default=None, description="Kernel crash dumping status (e.g. 'disabled', 'enabled')"
+    )
+    auto_numa_status: str | None = Field(
+        default=None, description="Auto-NUMA balancing status (e.g. 'disable', 'enable')"
     )
 
 
@@ -144,9 +164,47 @@ class HostDetail(BaseModel):
     update_available: bool | None = Field(
         default=None, description="Whether OS or package updates are available for this host"
     )
+    reinstallation_required: bool | None = Field(
+        default=None,
+        description="True if the host requires reinstallation (e.g. out of sync VDSM, certs, or packages).",
+    )
+    status_detail: str | None = Field(
+        default=None,
+        description="Detailed reason for current host status (e.g. why host is non-operational).",
+    )
+    external_status: str | None = Field(
+        default=None,
+        description="External health status: 'ok', 'info', 'warning', 'error'.",
+    )
     iscsi_initiator_name: str | None = Field(
         default=None,
         description="Host iSCSI initiator name / IQN (e.g. 'iqn.1994-05.com.redhat:...').",
+    )
+    comment: str | None = Field(default=None, description="Free-text comment on the host")
+    description: str | None = Field(default=None, description="Description of the host")
+    kdump_status: str | None = Field(
+        default=None, description="Kernel crash dumping status (e.g. 'disabled', 'enabled')"
+    )
+    auto_numa_status: str | None = Field(
+        default=None, description="Auto-NUMA balancing status (e.g. 'disable', 'enable')"
+    )
+    se_linux: str | None = Field(
+        default=None, description="SELinux mode on host ('enforcing', 'permissive', 'disabled')"
+    )
+    hosted_engine: bool | None = Field(
+        default=None, description="Whether host is configured for hosted engine"
+    )
+    transparent_huge_pages: bool | None = Field(
+        default=None, description="Whether transparent huge pages are enabled"
+    )
+    type: str | None = Field(
+        default=None, description="Host virtualization type (e.g. 'rhel', 'ovirt_node')"
+    )
+    protocol: str | None = Field(
+        default=None, description="Communication protocol (e.g. 'stomp', 'xml')"
+    )
+    numa_supported: bool | None = Field(
+        default=None, description="Whether host hardware supports NUMA architecture"
     )
     stats: HostStats | None = Field(
         default=None, description="Real-time performance and telemetry statistics"
@@ -300,3 +358,55 @@ class HostUpgradeResult(BaseModel):
         default=True, description="Whether host reboot was requested after upgrade"
     )
     message: str = Field(description="Human-readable outcome and upgrade instructions")
+
+
+class HostInstallResult(BaseModel):
+    """Result of initiating an installation or reinstallation on a hypervisor host."""
+
+    success: bool = Field(description="Whether the install/reinstall operation was initiated")
+    action: str = Field(
+        default="reinstall", description="Executed action ('install' or 'reinstall')"
+    )
+    host_id: str = Field(description="UUID of the hypervisor host")
+    host_name: str = Field(description="Display name / FQDN of the host")
+    status: str = Field(
+        description="Current status of the host ('installing', 'maintenance', etc.)"
+    )
+    reboot_requested: bool = Field(
+        default=True, description="Whether host reboot was requested after installation"
+    )
+    activate_on_finish: bool = Field(
+        default=True, description="Whether host will be automatically activated after install"
+    )
+    message: str = Field(description="Human-readable outcome description")
+    dry_run: bool = Field(default=False, description="Whether this was a dry-run simulation")
+
+
+class HostCreateResult(BaseModel):
+    """Result of adding and enrolling a new hypervisor host into an oVirt / OLVM cluster."""
+
+    success: bool = Field(description="Whether host addition was initiated.")
+    host_id: str = Field(description="UUID of the newly created hypervisor host.")
+    host_name: str = Field(description="Display name / FQDN of the host.")
+    address: str = Field(description="Management IP or FQDN of the host.")
+    cluster_id: str = Field(description="UUID of the target cluster.")
+    cluster_name: str = Field(description="Name of the target cluster.")
+    status: str = Field(
+        description="Initial status of the host ('installing', 'maintenance', 'up', etc.)."
+    )
+    dry_run: bool = Field(default=False, description="Whether this was a dry-run simulation.")
+    message: str = Field(description="Human-readable outcome description.")
+
+
+class HostDeleteResult(BaseModel):
+    """Result of permanently removing/deleting a hypervisor host from oVirt / OLVM."""
+
+    success: bool = Field(description="Whether the host removal succeeded.")
+    host_id: str = Field(description="UUID of the removed hypervisor host.")
+    host_name: str = Field(description="Display name / FQDN of the removed host.")
+    force: bool = Field(default=False, description="Whether force removal was requested.")
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this action was simulated in dry_run mode without execution.",
+    )
+    message: str = Field(description="Human-readable outcome description.")

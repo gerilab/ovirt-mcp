@@ -25,6 +25,7 @@ from ovirt_mcp.models.backup import (
 )
 from ovirt_mcp.models.cluster import (
     ClusterDetail,
+    ClusterOperationResult,
     ClusterSummary,
 )
 from ovirt_mcp.models.compute import (
@@ -37,10 +38,12 @@ from ovirt_mcp.models.compute import (
 )
 from ovirt_mcp.models.datacenter import (
     DataCenterDetail,
+    DataCenterOperationResult,
     DataCenterSummary,
 )
 from ovirt_mcp.models.disk import (
     DiskCreateResult,
+    DiskDeleteResult,
     DiskDetail,
     DiskOperationResult,
     DiskResizeResult,
@@ -48,9 +51,12 @@ from ovirt_mcp.models.disk import (
 )
 from ovirt_mcp.models.event import SystemEvent, VmEvent
 from ovirt_mcp.models.host import (
+    HostCreateResult,
+    HostDeleteResult,
     HostDetail,
     HostDeviceInfo,
     HostEvent,
+    HostInstallResult,
     HostLifecycleResult,
     HostNicInfo,
     HostNumaNodeInfo,
@@ -115,16 +121,22 @@ from ovirt_mcp.models.user import (
     UserSummary,
 )
 from ovirt_mcp.models.vm import (
+    VmCloneResult,
     VmCompactDetail,
     VmCreateResult,
     VmDeleteResult,
     VmDetail,
+    VmHardwareResult,
+    VmHostDeviceInfo,
+    VmInitializationInfo,
+    VmInitializationResult,
     VmLifecycleResult,
     VmMigrateResult,
     VmPinResult,
     VmSnapshotInfo,
     VmSnapshotResult,
     VmSummary,
+    VmWatchdogInfo,
 )
 from ovirt_mcp.models.vm_pool import (
     VmPoolDetail,
@@ -183,9 +195,14 @@ from ovirt_mcp.tools.backups import (
     start_vm_backup_tool,
 )
 from ovirt_mcp.tools.clusters import (
+    create_cluster_tool,
+    delete_cluster_tool,
     get_cluster_tool,
     list_clusters_tool,
+    reset_cluster_emulated_machine_tool,
+    sync_all_cluster_networks_tool,
     update_cluster_tool,
+    upgrade_cluster_tool,
 )
 from ovirt_mcp.tools.compute import (
     get_vm_console_file_tool,
@@ -194,16 +211,24 @@ from ovirt_mcp.tools.compute import (
     update_vm_tool,
 )
 from ovirt_mcp.tools.datacenters import (
+    clean_finished_tasks_datacenter_tool,
+    create_datacenter_tool,
+    delete_datacenter_tool,
     get_datacenter_tool,
     list_datacenters_tool,
 )
 from ovirt_mcp.tools.disks import (
     attach_disk_tool,
+    convert_disk_tool,
     copy_disk_tool,
     create_disk_tool,
+    delete_disk_tool,
     detach_disk_tool,
+    get_disk_tool,
     list_disks_tool,
     move_disk_tool,
+    reduce_disk_tool,
+    refresh_disk_lun_tool,
     resize_disk_tool,
     sparsify_disk_tool,
 )
@@ -214,6 +239,13 @@ from ovirt_mcp.tools.host_bonding import (
 )
 from ovirt_mcp.tools.hosts import (
     activate_host_tool,
+    approve_host_tool,
+    commit_net_config_host_tool,
+    copy_host_networks_tool,
+    create_host_tool,
+    delete_host_tool,
+    enroll_certificate_host_tool,
+    force_select_spm_tool,
     get_host_stats_tool,
     get_host_tool,
     list_host_devices_tool,
@@ -223,7 +255,11 @@ from ovirt_mcp.tools.hosts import (
     list_host_storage_tool,
     list_hosts_tool,
     maintenance_host_tool,
+    refresh_host_tool,
+    reinstall_host_tool,
     restart_host_tool,
+    sync_all_networks_host_tool,
+    update_host_tool,
     upgrade_check_host_tool,
     upgrade_host_tool,
 )
@@ -245,6 +281,7 @@ from ovirt_mcp.tools.logical_networks import (
     delete_logical_network_tool,
     get_logical_network_tool,
     list_logical_networks_tool,
+    update_logical_network_tool,
 )
 from ovirt_mcp.tools.media import (
     attach_vm_iso_tool,
@@ -263,6 +300,12 @@ from ovirt_mcp.tools.quotas import (
     delete_quota_tool,
     get_quota_tool,
     list_quotas_tool,
+)
+from ovirt_mcp.tools.storage import (
+    list_unregistered_vms_tool,
+    reduce_luns_storage_domain_tool,
+    refresh_luns_storage_domain_tool,
+    register_unregistered_vm_tool,
 )
 from ovirt_mcp.tools.storage import (
     ovirt_storage_domain_activate as activate_storage_domain_tool,
@@ -288,6 +331,12 @@ from ovirt_mcp.tools.storage import (
 from ovirt_mcp.tools.storage import (
     ovirt_storage_domain_maintenance as maintenance_storage_domain_tool,
 )
+from ovirt_mcp.tools.storage import (
+    ovirt_storage_domain_update as update_storage_domain_tool,
+)
+from ovirt_mcp.tools.storage import (
+    ovirt_storage_domain_update_ovf_store as update_ovf_store_tool,
+)
 from ovirt_mcp.tools.tags import (
     assign_host_tag_tool,
     assign_user_tag_tool,
@@ -303,8 +352,10 @@ from ovirt_mcp.tools.tags import (
 from ovirt_mcp.tools.templates import (
     create_template_from_vm_tool,
     delete_template_tool,
+    export_template_tool,
     get_template_tool,
     list_templates_tool,
+    update_template_tool,
 )
 from ovirt_mcp.tools.users import (
     add_permission_tool,
@@ -332,21 +383,37 @@ from ovirt_mcp.tools.vm_pools import (
     update_vm_pool_tool,
 )
 from ovirt_mcp.tools.vms import (
+    add_vm_watchdog_tool,
+    attach_vm_host_device_tool,
+    auto_pin_vm_tool,
+    cancel_vm_migration_tool,
+    clone_vm_from_snapshot_tool,
+    clone_vm_tool,
     commit_vm_snapshot_tool,
     create_vm_snapshot_tool,
     create_vm_tool,
     delete_vm_snapshot_tool,
     delete_vm_tool,
+    detach_vm_host_device_tool,
+    freeze_vm_filesystems_tool,
+    get_vm_initialization_tool,
     get_vm_tool,
+    list_vm_host_devices_tool,
     list_vm_snapshots_tool,
+    list_vm_watchdogs_tool,
     list_vms_tool,
     migrate_vm_tool,
     pin_vm_tool,
     preview_vm_snapshot_tool,
     reboot_vm_tool,
+    remove_vm_watchdog_tool,
+    reset_vm_tool,
     restore_vm_snapshot_tool,
+    set_vm_initialization_tool,
     start_vm_tool,
     stop_vm_tool,
+    suspend_vm_tool,
+    thaw_vm_filesystems_tool,
     undo_vm_snapshot_tool,
     unpin_vm_tool,
 )
@@ -475,11 +542,24 @@ def ovirt_vm_events(
 
 @mcp.tool(
     name="ovirt_vm_start",
-    description="Start / power-on a virtual machine by name or UUID. Set wait=True to block until UP state. Set dry_run=True to simulate the operation without powering on the VM.",
+    description=(
+        "Start / power-on a virtual machine by name or UUID. "
+        "Supports standard boot, paused boot (pause=True), and Run-Once execution with Cloud-Init, Sysprep, or Ignition. "
+        "Set wait=True to block until UP state. Set dry_run=True to simulate the operation without powering on the VM."
+    ),
 )
 def ovirt_vm_start(
     name_or_id: str,
     pause: bool = False,
+    use_cloud_init: bool = False,
+    use_sysprep: bool = False,
+    use_ignition: bool = False,
+    cloud_init_script: str | None = None,
+    cloud_init_hostname: str | None = None,
+    cloud_init_ssh_keys: str | None = None,
+    cloud_init_password: str | None = None,
+    sysprep_admin_password: str | None = None,
+    ignition_script: str | None = None,
     wait: bool = False,
     timeout_seconds: int = 60,
     dry_run: bool = False,
@@ -488,6 +568,15 @@ def ovirt_vm_start(
     return start_vm_tool(
         name_or_id=name_or_id,
         pause=pause,
+        use_cloud_init=use_cloud_init,
+        use_sysprep=use_sysprep,
+        use_ignition=use_ignition,
+        cloud_init_script=cloud_init_script,
+        cloud_init_hostname=cloud_init_hostname,
+        cloud_init_ssh_keys=cloud_init_ssh_keys,
+        cloud_init_password=cloud_init_password,
+        sysprep_admin_password=sysprep_admin_password,
+        ignition_script=ignition_script,
         wait=wait,
         timeout_seconds=timeout_seconds,
         dry_run=dry_run,
@@ -584,10 +673,113 @@ def ovirt_vm_reboot(
 
 
 @mcp.tool(
+    name="ovirt_vm_cancel_migration",
+    description=(
+        "Cancel an in-progress live migration of a virtual machine. In Safe Mode (default), confirm=True is required. "
+        "Set dry_run=True to preview cancellation without interrupting migration."
+    ),
+)
+def ovirt_vm_cancel_migration(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Cancel an in-progress live migration."""
+    return cancel_vm_migration_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_vm_suspend",
+    description=(
+        "Suspend a running virtual machine to disk (pause / hibernate). In Safe Mode (default), confirm=True is required. "
+        "Set dry_run=True to preview the suspend operation without saving state."
+    ),
+)
+def ovirt_vm_suspend(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Suspend a virtual machine to disk."""
+    return suspend_vm_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_vm_reset",
+    description=(
+        "Execute a hard hardware reset on a virtual machine (simulates pressing the physical reset button). "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without resetting."
+    ),
+)
+def ovirt_vm_reset(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Execute a hard hardware reset on a virtual machine."""
+    return reset_vm_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_vm_freeze_filesystems",
+    description=(
+        "Freeze (quiesce) virtual machine guest filesystems via qemu-guest-agent for consistent external storage snapshots and backups. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without freezing."
+    ),
+)
+def ovirt_vm_freeze_filesystems(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Freeze guest filesystems via guest agent."""
+    return freeze_vm_filesystems_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_vm_thaw_filesystems",
+    description=(
+        "Thaw (unquiesce) virtual machine guest filesystems via qemu-guest-agent after external storage snapshots or backups complete. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without thawing."
+    ),
+)
+def ovirt_vm_thaw_filesystems(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Thaw guest filesystems via guest agent."""
+    return thaw_vm_filesystems_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_vm_auto_pin",
+    description=(
+        "Apply automated CPU and NUMA node pinning topology to a virtual machine based on cluster optimization policies. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without applying."
+    ),
+)
+def ovirt_vm_auto_pin(
+    name_or_id: str,
+    optimize_cpu_settings: bool = False,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Apply automated CPU and NUMA node pinning to a VM."""
+    return auto_pin_vm_tool(
+        name_or_id=name_or_id,
+        optimize_cpu_settings=optimize_cpu_settings,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
     name="ovirt_vm_create",
     description=(
         "Create a new virtual machine in oVirt / OLVM. "
-        "Allows provisioning from Blank or custom template, configuring vCPUs, RAM, primary disk, and vNIC profile."
+        "Allows provisioning from Blank or custom template, configuring vCPUs, RAM, primary disk, vNIC profile, "
+        "and guest initialization (Cloud-Init for Linux or Sysprep for Windows)."
     ),
 )
 def ovirt_vm_create(
@@ -602,6 +794,32 @@ def ovirt_vm_create(
     disk_size_gb: int | None = None,
     storage_domain: str | None = None,
     network_profile: str | None = None,
+    cloud_init_hostname: str | None = None,
+    cloud_init_user: str | None = None,
+    cloud_init_password: str | None = None,
+    cloud_init_ssh_keys: str | None = None,
+    cloud_init_script: str | None = None,
+    cloud_init_dns_servers: str | None = None,
+    cloud_init_dns_search: str | None = None,
+    cloud_init_regenerate_ssh_keys: bool | None = None,
+    cloud_init_timezone: str | None = None,
+    sysprep_domain: str | None = None,
+    sysprep_active_directory_ou: str | None = None,
+    sysprep_admin_password: str | None = None,
+    sysprep_user_name: str | None = None,
+    sysprep_license_key: str | None = None,
+    sysprep_org_name: str | None = None,
+    sysprep_input_locale: str | None = None,
+    sysprep_system_locale: str | None = None,
+    sysprep_ui_language: str | None = None,
+    sysprep_user_locale: str | None = None,
+    sysprep_custom_script: str | None = None,
+    sysprep_timezone: str | None = None,
+    nic_name: str | None = None,
+    nic_boot_protocol: str | None = None,
+    nic_ip_address: str | None = None,
+    nic_netmask: str | None = None,
+    nic_gateway: str | None = None,
     wait: bool = False,
     timeout_seconds: int = 120,
 ) -> VmCreateResult:
@@ -618,9 +836,121 @@ def ovirt_vm_create(
         disk_size_gb=disk_size_gb,
         storage_domain=storage_domain,
         network_profile=network_profile,
+        cloud_init_hostname=cloud_init_hostname,
+        cloud_init_user=cloud_init_user,
+        cloud_init_password=cloud_init_password,
+        cloud_init_ssh_keys=cloud_init_ssh_keys,
+        cloud_init_script=cloud_init_script,
+        cloud_init_dns_servers=cloud_init_dns_servers,
+        cloud_init_dns_search=cloud_init_dns_search,
+        cloud_init_regenerate_ssh_keys=cloud_init_regenerate_ssh_keys,
+        cloud_init_timezone=cloud_init_timezone,
+        sysprep_domain=sysprep_domain,
+        sysprep_active_directory_ou=sysprep_active_directory_ou,
+        sysprep_admin_password=sysprep_admin_password,
+        sysprep_user_name=sysprep_user_name,
+        sysprep_license_key=sysprep_license_key,
+        sysprep_org_name=sysprep_org_name,
+        sysprep_input_locale=sysprep_input_locale,
+        sysprep_system_locale=sysprep_system_locale,
+        sysprep_ui_language=sysprep_ui_language,
+        sysprep_user_locale=sysprep_user_locale,
+        sysprep_custom_script=sysprep_custom_script,
+        sysprep_timezone=sysprep_timezone,
+        nic_name=nic_name,
+        nic_boot_protocol=nic_boot_protocol,
+        nic_ip_address=nic_ip_address,
+        nic_netmask=nic_netmask,
+        nic_gateway=nic_gateway,
         wait=wait,
         timeout_seconds=timeout_seconds,
     )
+
+
+@mcp.tool(
+    name="ovirt_vm_initialization_set",
+    description=(
+        "Configure or clear guest initialization (Cloud-Init for Linux, Sysprep for Windows) on a virtual machine. "
+        "Allows setting hostname, user credentials, SSH keys, user-data script, Windows domain, product key, "
+        "locales, and static network settings. Set clear=True (requires confirm=True in Safe Mode) to remove initialization."
+    ),
+)
+def ovirt_vm_initialization_set(
+    name_or_id: str,
+    clear: bool = False,
+    cloud_init_hostname: str | None = None,
+    cloud_init_user: str | None = None,
+    cloud_init_password: str | None = None,
+    cloud_init_ssh_keys: str | None = None,
+    cloud_init_script: str | None = None,
+    cloud_init_dns_servers: str | None = None,
+    cloud_init_dns_search: str | None = None,
+    cloud_init_regenerate_ssh_keys: bool | None = None,
+    cloud_init_timezone: str | None = None,
+    sysprep_domain: str | None = None,
+    sysprep_active_directory_ou: str | None = None,
+    sysprep_admin_password: str | None = None,
+    sysprep_user_name: str | None = None,
+    sysprep_license_key: str | None = None,
+    sysprep_org_name: str | None = None,
+    sysprep_input_locale: str | None = None,
+    sysprep_system_locale: str | None = None,
+    sysprep_ui_language: str | None = None,
+    sysprep_user_locale: str | None = None,
+    sysprep_custom_script: str | None = None,
+    sysprep_timezone: str | None = None,
+    nic_name: str | None = None,
+    nic_boot_protocol: str | None = None,
+    nic_ip_address: str | None = None,
+    nic_netmask: str | None = None,
+    nic_gateway: str | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmInitializationResult:
+    """Configure or clear guest initialization (Cloud-Init / Sysprep) on a virtual machine."""
+    return set_vm_initialization_tool(
+        name_or_id=name_or_id,
+        clear=clear,
+        cloud_init_hostname=cloud_init_hostname,
+        cloud_init_user=cloud_init_user,
+        cloud_init_password=cloud_init_password,
+        cloud_init_ssh_keys=cloud_init_ssh_keys,
+        cloud_init_script=cloud_init_script,
+        cloud_init_dns_servers=cloud_init_dns_servers,
+        cloud_init_dns_search=cloud_init_dns_search,
+        cloud_init_regenerate_ssh_keys=cloud_init_regenerate_ssh_keys,
+        cloud_init_timezone=cloud_init_timezone,
+        sysprep_domain=sysprep_domain,
+        sysprep_active_directory_ou=sysprep_active_directory_ou,
+        sysprep_admin_password=sysprep_admin_password,
+        sysprep_user_name=sysprep_user_name,
+        sysprep_license_key=sysprep_license_key,
+        sysprep_org_name=sysprep_org_name,
+        sysprep_input_locale=sysprep_input_locale,
+        sysprep_system_locale=sysprep_system_locale,
+        sysprep_ui_language=sysprep_ui_language,
+        sysprep_user_locale=sysprep_user_locale,
+        sysprep_custom_script=sysprep_custom_script,
+        sysprep_timezone=sysprep_timezone,
+        nic_name=nic_name,
+        nic_boot_protocol=nic_boot_protocol,
+        nic_ip_address=nic_ip_address,
+        nic_netmask=nic_netmask,
+        nic_gateway=nic_gateway,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_initialization_get",
+    description="Retrieve guest initialization settings (Cloud-Init / Sysprep) configured on a virtual machine.",
+)
+def ovirt_vm_initialization_get(
+    name_or_id: str,
+) -> VmInitializationInfo:
+    """Get VM initialization configuration."""
+    return get_vm_initialization_tool(name_or_id=name_or_id)
 
 
 @mcp.tool(
@@ -1154,6 +1484,30 @@ def ovirt_disk_sparsify(
 
 
 @mcp.tool(
+    name="ovirt_disk_reduce",
+    description=(
+        "Reduce (shrink) the underlying physical storage volume allocation for a thin-provisioned virtual disk. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without reducing."
+    ),
+)
+def ovirt_disk_reduce(
+    disk_name_or_id: str,
+    wait: bool = True,
+    timeout: int = 300,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> DiskOperationResult:
+    """Reduce underlying volume allocation for a thin-provisioned disk."""
+    return reduce_disk_tool(
+        disk_name_or_id=disk_name_or_id,
+        wait=wait,
+        timeout=timeout,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
     name="ovirt_vm_nic_list",
     description=(
         "List all virtual network interface cards (vNICs) attached to a virtual machine, "
@@ -1476,6 +1830,180 @@ def ovirt_host_upgrade(
         confirm=confirm,
         async_=async_,
         timeout_minutes=timeout_minutes,
+    )
+
+
+@mcp.tool(
+    name="ovirt_host_reinstall",
+    description=(
+        "Reinstall or deploy the management stack (VDSM, PKI certificates, network) on a hypervisor host. "
+        "Executes the oVirt / OLVM host deployment Ansible automation playbook (ovirt-host-deploy). "
+        "Strict Safety Guard: The host MUST be in 'maintenance', 'non_operational', or 'install_failed' state. "
+        "Active hypervisors with running VMs are strictly blocked to protect tenant workloads. "
+        "Protected action in Safe Mode: requires confirm=True when MCP_SAFE_MODE=true. "
+        "Set dry_run=True to preview and validate the reinstallation without deploying changes."
+    ),
+)
+def ovirt_host_reinstall(
+    name_or_id: str,
+    root_password: str | None = None,
+    activate: bool = True,
+    reboot: bool = True,
+    confirm: bool = False,
+    async_: bool = True,
+    dry_run: bool = False,
+) -> HostInstallResult:
+    """Reinstall or deploy management components on a hypervisor host."""
+    return reinstall_host_tool(
+        name_or_id=name_or_id,
+        root_password=root_password,
+        activate=activate,
+        reboot=reboot,
+        confirm=confirm,
+        async_=async_,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_host_refresh",
+    description=(
+        "Refresh host capabilities, hardware devices, and network configuration from VDSM. "
+        "Useful after hardware or network configuration changes. Set dry_run=True to preview."
+    ),
+)
+def ovirt_host_refresh(
+    name_or_id: str,
+    dry_run: bool = False,
+) -> HostLifecycleResult:
+    """Refresh host hardware, capabilities, and device inventory."""
+    return refresh_host_tool(name_or_id=name_or_id, dry_run=dry_run)
+
+
+@mcp.tool(
+    name="ovirt_host_force_select_spm",
+    description=(
+        "Force selection of a hypervisor host as Storage Pool Manager (SPM). "
+        "Host must be in UP state. In Safe Mode (default), confirm=True is required. "
+        "Set dry_run=True to preview without executing."
+    ),
+)
+def ovirt_host_force_select_spm(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Force selection of this hypervisor host as Storage Pool Manager (SPM)."""
+    return force_select_spm_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_host_enroll_certificate",
+    description=(
+        "Enroll / renew the PKI TLS certificate of a hypervisor host with the engine CA. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without enrolling."
+    ),
+)
+def ovirt_host_enroll_certificate(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Enroll or renew host PKI certificate."""
+    return enroll_certificate_host_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_host_sync_all_networks",
+    description=(
+        "Synchronize all out-of-sync logical network configurations on a hypervisor host with cluster definitions. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without synchronizing."
+    ),
+)
+def ovirt_host_sync_all_networks(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Synchronize all networks on a host."""
+    return sync_all_networks_host_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_host_commit_net_config",
+    description=(
+        "Commit and persist current running network configuration to permanent storage on a hypervisor host. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without committing."
+    ),
+)
+def ovirt_host_commit_net_config(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Commit persistent network configuration on a host."""
+    return commit_net_config_host_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_host_delete",
+    description=(
+        "Permanently delete/remove a hypervisor host from oVirt / OLVM inventory. "
+        "Strict Safety Guard: The host MUST be in 'maintenance' state unless force=True. "
+        "Active hypervisors with running VMs or SPM hosts are blocked unless force=True. "
+        "Protected action in Safe Mode: requires confirm=True when MCP_SAFE_MODE=true. "
+        "Set dry_run=True to preview and validate deletion without executing."
+    ),
+)
+def ovirt_host_delete(
+    name_or_id: str,
+    force: bool = False,
+    confirm: bool = False,
+    dry_run: bool = False,
+) -> HostDeleteResult:
+    """Permanently delete/remove a hypervisor host from oVirt / OLVM."""
+    return delete_host_tool(
+        name_or_id=name_or_id,
+        force=force,
+        confirm=confirm,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_host_create",
+    description=(
+        "Add, provision, and enroll a new hypervisor host into an oVirt / OLVM virtualization cluster. "
+        "Triggers the engine's automated Ansible host deployment playbook (ovirt-host-deploy) to install VDSM, "
+        "enroll host PKI TLS certificates, and configure management networking. "
+        "Protected by mutation-guard: blocked in read-only mode (MCP_READ_ONLY=true). "
+        "Set dry_run=True to preview, validate cluster existence, and verify unique address/hostname without executing."
+    ),
+)
+def ovirt_host_create(
+    name: str,
+    address: str,
+    cluster: str,
+    root_password: str | None = None,
+    ssh_port: int | None = 22,
+    comment: str | None = None,
+    activate: bool = True,
+    reboot: bool = True,
+    deploy_hosted_engine: bool = False,
+    dry_run: bool = False,
+) -> HostCreateResult:
+    """Add and provision a new hypervisor host in an oVirt / OLVM cluster."""
+    return create_host_tool(
+        name=name,
+        address=address,
+        cluster=cluster,
+        root_password=root_password,
+        ssh_port=ssh_port,
+        comment=comment,
+        activate=activate,
+        reboot=reboot,
+        deploy_hosted_engine=deploy_hosted_engine,
+        dry_run=dry_run,
     )
 
 
@@ -2044,6 +2572,65 @@ def ovirt_storage_domain_delete(
     )
 
 
+@mcp.tool(
+    name="ovirt_storage_domain_update_ovf_store",
+    description=(
+        "Trigger immediate OVF store synchronization and generation on a storage domain. "
+        "Ensures VM and template metadata backups are up to date on disk. Set dry_run=True to preview."
+    ),
+)
+def ovirt_storage_domain_update_ovf_store(
+    name_or_id: str,
+    dry_run: bool = False,
+) -> StorageDomainResult:
+    """Trigger immediate OVF store synchronization on a storage domain."""
+    return update_ovf_store_tool(name_or_id=name_or_id, dry_run=dry_run)
+
+
+@mcp.tool(
+    name="ovirt_storage_domain_refresh_luns",
+    description=(
+        "Rescan and refresh SAN/iSCSI LUN sizes and visibility on a block storage domain. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without rescanning."
+    ),
+)
+def ovirt_storage_domain_refresh_luns(
+    name_or_id: str,
+    logical_units: list[str] | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> StorageDomainResult:
+    """Refresh LUN sizes and visibility on a storage domain."""
+    return refresh_luns_storage_domain_tool(
+        name_or_id=name_or_id,
+        logical_units=logical_units,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_storage_domain_reduce_luns",
+    description=(
+        "Release and reduce unused SAN/iSCSI LUN physical volumes from a block storage domain. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without releasing LUNs."
+    ),
+)
+def ovirt_storage_domain_reduce_luns(
+    name_or_id: str,
+    logical_units: list[str],
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> StorageDomainResult:
+    """Release and reduce unused LUNs from a storage domain."""
+    return reduce_luns_storage_domain_tool(
+        name_or_id=name_or_id,
+        logical_units=logical_units,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
 # =========================================================================
 # Templates & Golden Images Tools
 # =========================================================================
@@ -2124,6 +2711,30 @@ def ovirt_template_delete(
         wait=wait,
         timeout=timeout,
         dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_template_export",
+    description=(
+        "Export an oVirt / OLVM template to an export storage domain. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without exporting."
+    ),
+)
+def ovirt_template_export(
+    name_or_id: str,
+    storage_domain: str,
+    exclusive: bool = False,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> TemplateResult:
+    """Export a template to an export storage domain."""
+    return export_template_tool(
+        name_or_id=name_or_id,
+        storage_domain=storage_domain,
+        exclusive=exclusive,
+        dry_run=dry_run,
+        confirm=confirm,
     )
 
 
@@ -2291,6 +2902,40 @@ def ovirt_cluster_update(
 
 
 @mcp.tool(
+    name="ovirt_cluster_sync_all_networks",
+    description=(
+        "Synchronize logical networks across all hypervisor hosts in a cluster. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without syncing."
+    ),
+)
+def ovirt_cluster_sync_all_networks(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> ClusterOperationResult:
+    """Synchronize logical networks across all hosts in a cluster."""
+    return sync_all_cluster_networks_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_cluster_reset_emulated_machine",
+    description=(
+        "Reset the default emulated machine type for all hosts and VMs in a cluster. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without resetting."
+    ),
+)
+def ovirt_cluster_reset_emulated_machine(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> ClusterOperationResult:
+    """Reset default emulated machine type in a cluster."""
+    return reset_cluster_emulated_machine_tool(
+        name_or_id=name_or_id, dry_run=dry_run, confirm=confirm
+    )
+
+
+@mcp.tool(
     name="ovirt_datacenter_list",
     description=(
         "List all Data Centers in oVirt / OLVM with status (up/uninitialized), storage type "
@@ -2312,6 +2957,24 @@ def ovirt_datacenter_list(search: str | None = None) -> list[DataCenterSummary]:
 def ovirt_datacenter_get(name_or_id: str) -> DataCenterDetail:
     """Get detailed specification of a Data Center."""
     return get_datacenter_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_datacenter_clean_finished_tasks",
+    description=(
+        "Clean finished asynchronous tasks for a Data Center to free engine memory and task tables. "
+        "In Safe Mode (default), confirm=True is required. Set dry_run=True to preview without cleaning."
+    ),
+)
+def ovirt_datacenter_clean_finished_tasks(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> DataCenterOperationResult:
+    """Clean finished asynchronous tasks for a Data Center."""
+    return clean_finished_tasks_datacenter_tool(
+        name_or_id=name_or_id, dry_run=dry_run, confirm=confirm
+    )
 
 
 @mcp.tool(
@@ -3092,6 +3755,513 @@ def ovirt_job_get(
     return get_job_tool(job_id=job_id)
 
 
+@mcp.tool(
+    name="ovirt_disk_get",
+    description=(
+        "Retrieve detailed information about a single virtual disk by name/alias or UUID, "
+        "including capacity, status, hosting storage domain, and I/O performance telemetry."
+    ),
+)
+def ovirt_disk_get(
+    name_or_id: str,
+) -> DiskDetail:
+    """Retrieve detailed virtual disk information."""
+    return get_disk_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_disk_delete",
+    description=(
+        "Permanently delete a virtual disk from its storage domain in oVirt / OLVM. "
+        "Requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_disk_delete(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> DiskDeleteResult:
+    """Delete a virtual disk."""
+    return delete_disk_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_vm_clone",
+    description=(
+        "Clone an existing virtual machine to create a new independent VM with optional target cluster, "
+        "storage domain, and snapshot collapsing."
+    ),
+)
+def ovirt_vm_clone(
+    source_name_or_id: str,
+    new_name: str,
+    cluster: str | None = None,
+    storage_domain: str | None = None,
+    discard_snapshots: bool = False,
+    wait: bool = False,
+    timeout_seconds: int = 120,
+    dry_run: bool = False,
+) -> VmCloneResult:
+    """Clone an existing virtual machine."""
+    return clone_vm_tool(
+        source_name_or_id=source_name_or_id,
+        new_name=new_name,
+        cluster=cluster,
+        storage_domain=storage_domain,
+        discard_snapshots=discard_snapshots,
+        wait=wait,
+        timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_cluster_create",
+    description="Create a new virtualization cluster in a target Data Center in oVirt / OLVM.",
+)
+def ovirt_cluster_create(
+    name: str,
+    data_center: str,
+    cpu_type: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    compatibility_version: str | None = None,
+    dry_run: bool = False,
+) -> ClusterOperationResult:
+    """Create a new virtualization cluster."""
+    return create_cluster_tool(
+        name=name,
+        data_center=data_center,
+        cpu_type=cpu_type,
+        description=description,
+        comment=comment,
+        compatibility_version=compatibility_version,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_cluster_delete",
+    description=(
+        "Delete an empty virtualization cluster from oVirt / OLVM. "
+        "Validates that no hosts or virtual machines remain in the cluster. "
+        "Requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_cluster_delete(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> ClusterOperationResult:
+    """Delete an empty virtualization cluster."""
+    return delete_cluster_tool(name_or_id=name_or_id, dry_run=dry_run, confirm=confirm)
+
+
+@mcp.tool(
+    name="ovirt_datacenter_create",
+    description="Create a new Data Center in oVirt / OLVM with shared or local storage configuration.",
+)
+def ovirt_datacenter_create(
+    name: str,
+    local_storage: bool = False,
+    description: str | None = None,
+    comment: str | None = None,
+    compatibility_version: str | None = None,
+    quota_mode: str | None = "disabled",
+    dry_run: bool = False,
+) -> DataCenterOperationResult:
+    """Create a new Data Center."""
+    return create_datacenter_tool(
+        name=name,
+        local_storage=local_storage,
+        description=description,
+        comment=comment,
+        compatibility_version=compatibility_version,
+        quota_mode=quota_mode,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_datacenter_delete",
+    description=(
+        "Delete a Data Center from oVirt / OLVM. "
+        "Validates that no clusters or storage domains remain unless force=True. "
+        "Requires confirm=True in Safe Mode."
+    ),
+)
+def ovirt_datacenter_delete(
+    name_or_id: str,
+    force: bool = False,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> DataCenterOperationResult:
+    """Delete a Data Center."""
+    return delete_datacenter_tool(
+        name_or_id=name_or_id,
+        force=force,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_host_update",
+    description=(
+        "Update hypervisor host configuration (display name, comment, or cluster relocation while in maintenance)."
+    ),
+)
+def ovirt_host_update(
+    name_or_id: str,
+    name: str | None = None,
+    comment: str | None = None,
+    cluster: str | None = None,
+    dry_run: bool = False,
+) -> HostDetail:
+    """Update hypervisor host configuration."""
+    return update_host_tool(
+        name_or_id=name_or_id,
+        name=name,
+        comment=comment,
+        cluster=cluster,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_network_update",
+    description="Update logical network configuration (name, description, comment, VLAN tag, or MTU).",
+)
+def ovirt_network_update(
+    name_or_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    vlan_tag: int | None = None,
+    mtu: int | None = None,
+    dry_run: bool = False,
+) -> LogicalNetworkDetail:
+    """Update logical network configuration."""
+    return update_logical_network_tool(
+        name_or_id=name_or_id,
+        name=name,
+        description=description,
+        comment=comment,
+        vlan_tag=vlan_tag,
+        mtu=mtu,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_template_update",
+    description="Update virtual machine template properties (name, description, or comment).",
+)
+def ovirt_template_update(
+    name_or_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    dry_run: bool = False,
+) -> TemplateDetail:
+    """Update virtual machine template properties."""
+    return update_template_tool(
+        name_or_id=name_or_id,
+        name=name,
+        description=description,
+        comment=comment,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_storage_domain_update",
+    description=(
+        "Update Storage Domain attributes (name, description, comment, warning low space threshold, "
+        "or critical space blocking threshold)."
+    ),
+)
+def ovirt_storage_domain_update(
+    name_or_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    warning_low_space_indicator: int | None = None,
+    critical_space_action_blocker: int | None = None,
+    dry_run: bool = False,
+) -> StorageDomainDetail:
+    """Update Storage Domain attributes."""
+    return update_storage_domain_tool(
+        name_or_id=name_or_id,
+        name=name,
+        description=description,
+        comment=comment,
+        warning_low_space_indicator=warning_low_space_indicator,
+        critical_space_action_blocker=critical_space_action_blocker,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_disk_convert",
+    description="Convert a virtual disk format between COW (qcow2) and RAW, and set sparse preallocation.",
+)
+def ovirt_disk_convert(
+    name_or_id: str,
+    target_format: str,
+    sparse: bool | None = None,
+    wait: bool = False,
+    timeout_seconds: int = 300,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> DiskOperationResult:
+    """Convert virtual disk format (cow vs raw) and sparse allocation."""
+    return convert_disk_tool(
+        name_or_id=name_or_id,
+        target_format=target_format,
+        sparse=sparse,
+        wait=wait,
+        timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_disk_lun_refresh",
+    description="Refresh capacity and volume status of a direct LUN virtual disk.",
+)
+def ovirt_disk_lun_refresh(
+    name_or_id: str,
+    dry_run: bool = False,
+) -> DiskOperationResult:
+    """Refresh direct LUN virtual disk."""
+    return refresh_disk_lun_tool(
+        name_or_id=name_or_id,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_storage_domain_unregistered_vms_list",
+    description="List unregistered virtual machines available on a storage domain (for disaster recovery / re-registration).",
+)
+def ovirt_storage_domain_unregistered_vms_list(
+    storage_domain: str,
+) -> list[VmSummary]:
+    """List unregistered virtual machines on a storage domain."""
+    return list_unregistered_vms_tool(storage_domain=storage_domain)
+
+
+@mcp.tool(
+    name="ovirt_storage_domain_unregistered_vm_register",
+    description="Register an unregistered virtual machine from a storage domain into a target cluster.",
+)
+def ovirt_storage_domain_unregistered_vm_register(
+    storage_domain: str,
+    vm_id: str,
+    cluster: str,
+    new_name: str | None = None,
+    allow_partial_import: bool = False,
+    reassign_bad_macs: bool = True,
+    dry_run: bool = False,
+) -> VmCreateResult:
+    """Register an unregistered VM into a target cluster."""
+    return register_unregistered_vm_tool(
+        storage_domain=storage_domain,
+        vm_id=vm_id,
+        cluster=cluster,
+        new_name=new_name,
+        allow_partial_import=allow_partial_import,
+        reassign_bad_macs=reassign_bad_macs,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_host_copy_networks",
+    description="Copy logical network setup and NIC configurations from a source host to a target host.",
+)
+def ovirt_host_copy_networks(
+    source_host: str,
+    target_host: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Copy network configuration between hypervisor hosts."""
+    return copy_host_networks_tool(
+        source_host=source_host,
+        target_host=target_host,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_host_approve",
+    description="Approve a newly installed hypervisor host for integration into a cluster.",
+)
+def ovirt_host_approve(
+    name_or_id: str,
+    cluster: str | None = None,
+    activate: bool = True,
+    reboot: bool = True,
+    dry_run: bool = False,
+) -> HostLifecycleResult:
+    """Approve a pre-installed hypervisor host."""
+    return approve_host_tool(
+        name_or_id=name_or_id,
+        cluster=cluster,
+        activate=activate,
+        reboot=reboot,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_cluster_upgrade",
+    description="Manage cluster-wide rolling upgrade (start, stop, or update_progress).",
+)
+def ovirt_cluster_upgrade(
+    name_or_id: str,
+    action: str = "start",
+    percent_complete: int | None = None,
+    correlation_id: str | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> ClusterOperationResult:
+    """Execute cluster upgrade action (start, stop, update_progress)."""
+    return upgrade_cluster_tool(
+        name_or_id=name_or_id,
+        action=action,
+        percent_complete=percent_complete,
+        correlation_id=correlation_id,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_watchdog_list",
+    description="List watchdog devices attached to a virtual machine.",
+)
+def ovirt_vm_watchdog_list(
+    name_or_id: str,
+) -> list[VmWatchdogInfo]:
+    """List watchdog devices attached to a VM."""
+    return list_vm_watchdogs_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_vm_watchdog_add",
+    description="Add a hardware watchdog device to a virtual machine.",
+)
+def ovirt_vm_watchdog_add(
+    name_or_id: str,
+    model: str = "i6300esb",
+    action: str = "reset",
+    dry_run: bool = False,
+) -> VmHardwareResult:
+    """Add a watchdog device to a virtual machine."""
+    return add_vm_watchdog_tool(
+        name_or_id=name_or_id,
+        model=model,
+        action=action,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_watchdog_remove",
+    description="Remove a watchdog device from a virtual machine.",
+)
+def ovirt_vm_watchdog_remove(
+    name_or_id: str,
+    watchdog_id: str | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmHardwareResult:
+    """Remove a watchdog device from a virtual machine."""
+    return remove_vm_watchdog_tool(
+        name_or_id=name_or_id,
+        watchdog_id=watchdog_id,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_host_device_list",
+    description="List physical host devices (SR-IOV, GPU, PCI passthrough) attached to a virtual machine.",
+)
+def ovirt_vm_host_device_list(
+    name_or_id: str,
+) -> list[VmHostDeviceInfo]:
+    """List physical host devices attached to a virtual machine."""
+    return list_vm_host_devices_tool(name_or_id=name_or_id)
+
+
+@mcp.tool(
+    name="ovirt_vm_host_device_attach",
+    description="Attach a physical host device (PCI passthrough, SR-IOV vGPU) to a virtual machine.",
+)
+def ovirt_vm_host_device_attach(
+    name_or_id: str,
+    host_device_name: str,
+    dry_run: bool = False,
+) -> VmHardwareResult:
+    """Attach a physical host device to a virtual machine."""
+    return attach_vm_host_device_tool(
+        name_or_id=name_or_id,
+        host_device_name=host_device_name,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_host_device_detach",
+    description="Detach a physical host device from a virtual machine.",
+)
+def ovirt_vm_host_device_detach(
+    name_or_id: str,
+    host_device_name: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmHardwareResult:
+    """Detach a physical host device from a virtual machine."""
+    return detach_vm_host_device_tool(
+        name_or_id=name_or_id,
+        host_device_name=host_device_name,
+        dry_run=dry_run,
+        confirm=confirm,
+    )
+
+
+@mcp.tool(
+    name="ovirt_vm_snapshot_clone",
+    description="Create a new independent virtual machine cloned directly from an existing snapshot.",
+)
+def ovirt_vm_snapshot_clone(
+    name_or_id: str,
+    snapshot_id: str,
+    new_name: str,
+    cluster: str | None = None,
+    wait: bool = False,
+    timeout_seconds: int = 180,
+    dry_run: bool = False,
+) -> VmCloneResult:
+    """Clone a new virtual machine from a snapshot."""
+    return clone_vm_from_snapshot_tool(
+        name_or_id=name_or_id,
+        snapshot_id=snapshot_id,
+        new_name=new_name,
+        cluster=cluster,
+        wait=wait,
+        timeout_seconds=timeout_seconds,
+        dry_run=dry_run,
+    )
+
+
 def check_connection_cli() -> int:
     """Run an interactive pre-flight health check against the configured oVirt engine."""
     import sys
@@ -3126,6 +4296,27 @@ def check_connection_cli() -> int:
         return 1
 
 
+def run_audit_cli() -> int:
+    """Execute the SDK parity and coverage audit from CLI."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    audit_script = (
+        Path(__file__).resolve().parent.parent.parent / "scripts" / "audit_sdk_coverage.py"
+    )
+    if audit_script.exists():
+        spec = importlib.util.spec_from_file_location("audit_sdk_coverage", audit_script)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["audit_sdk_coverage"] = mod
+            spec.loader.exec_module(mod)
+            return int(mod.main())
+
+    print("[FAILED] audit_sdk_coverage script not found.", file=sys.stderr)
+    return 1
+
+
 def main() -> None:
     """Run the MCP server over standard I/O (stdio), network HTTP/SSE transport, or pre-flight check."""
     import sys
@@ -3133,6 +4324,9 @@ def main() -> None:
     args = sys.argv[1:]
     if any(arg in ("--check", "check", "--health", "health") for arg in args):
         sys.exit(check_connection_cli())
+
+    if any(arg in ("--audit", "audit", "--coverage", "coverage") for arg in args):
+        sys.exit(run_audit_cli())
 
     config = get_config()
     transport = config.mcp_transport.strip().lower()

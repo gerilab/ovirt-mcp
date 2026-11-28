@@ -108,6 +108,31 @@ class DiskDetail(BaseModel):
     storage_domain_id: str | None = Field(
         default=None, description="UUID of the hosting storage domain"
     )
+    backup: str | None = Field(
+        default=None, description="Backup configuration policy (e.g. 'incremental', 'none')"
+    )
+    backup_mode: str | None = Field(default=None, description="Incremental backup mode")
+    shareable: bool | None = Field(
+        default=None, description="Whether disk is shareable across multiple VMs"
+    )
+    read_only: bool | None = Field(default=None, description="Whether disk is read-only")
+    wipe_after_delete: bool | None = Field(
+        default=None, description="Whether disk data is scrubbed upon deletion"
+    )
+    sparse: bool | None = Field(
+        default=None, description="Whether disk is thin-provisioned (sparse)"
+    )
+    qcow_version: str | None = Field(
+        default=None, description="QCOW metadata version (e.g. 'qcow2_v3')"
+    )
+    sgio: str | None = Field(
+        default=None, description="SCSI generic I/O filtering policy ('filtered', 'unfiltered')"
+    )
+    propagate_errors: str | None = Field(
+        default=None, description="Disk error propagation policy ('on', 'off')"
+    )
+    description: str | None = Field(default=None, description="Disk description")
+    comment: str | None = Field(default=None, description="Free-text comment on disk")
     io_stats: DiskIoStats | None = Field(
         default=None, description="Real-time disk I/O performance and latency telemetry"
     )
@@ -144,5 +169,18 @@ class DiskOperationResult(BaseModel):
     dry_run: bool = Field(
         default=False,
         description="Whether this action was simulated in dry_run mode without execution",
+    )
+    message: str = Field(description="Human-readable outcome description")
+
+
+class DiskDeleteResult(BaseModel):
+    """Result of a virtual disk deletion operation."""
+
+    success: bool = Field(description="Whether disk deletion succeeded")
+    disk_id: str = Field(description="UUID of the deleted virtual disk")
+    disk_name: str = Field(description="Name or alias of the deleted virtual disk")
+    dry_run: bool = Field(
+        default=False,
+        description="Whether this was simulated in dry_run mode without execution",
     )
     message: str = Field(description="Human-readable outcome description")

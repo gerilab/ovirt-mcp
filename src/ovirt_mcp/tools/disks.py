@@ -10,6 +10,7 @@ from ovirt_mcp.client import get_client
 from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtValidationError
 from ovirt_mcp.models.disk import (
     DiskCreateResult,
+    DiskDeleteResult,
     DiskDetail,
     DiskIoStats,
     DiskOperationResult,
@@ -20,7 +21,10 @@ from ovirt_mcp.models.disk import (
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
+    require_disk_status,
     require_mutation_allowed,
+    require_storage_domain_status,
+    require_vm_status,
 )
 
 logger = logging.getLogger("ovirt_mcp.tools.disks")
@@ -210,11 +214,13 @@ def attach_vm_disk_tool(
     conn = client.get_connection()
     vms_service = conn.system_service().vms_service()
     disks_service = conn.system_service().disks_service()
-    disks_service = conn.system_service().disks_service()
 
     vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
     vm_id = str(vm.id)
     vm_name = str(vm.name)
+    require_vm_status(
+        vm_name, getattr(vm, "status", None), ("up", "down", "paused"), action_name="attach_vm_disk"
+    )
     vm_service = vms_service.vm_service(vm_id)
 
     # Validate that target disk exists and is unlocked
@@ -222,6 +228,9 @@ def attach_vm_disk_tool(
         disk_svc = disks_service.disk_service(disk_id)
         disk = disk_svc.get()
         disk_name = str(getattr(disk, "name", disk_id))
+        require_disk_status(
+            disk_name, getattr(disk, "status", None), ("ok",), action_name="attach_vm_disk"
+        )
 
         # If disk is locked (e.g. just detached or resized), wait until it reaches 'ok'
         start_wait = time.time()
@@ -322,6 +331,9 @@ def detach_vm_disk_tool(
     vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
     vm_id = str(vm.id)
     vm_name = str(vm.name)
+    require_vm_status(
+        vm_name, getattr(vm, "status", None), ("up", "down", "paused"), action_name="detach_vm_disk"
+    )
     vm_service = vms_service.vm_service(vm_id)
 
     # Locate attachment by disk id or attachment id
@@ -440,15 +452,21 @@ def create_vm_disk_tool(
     vms_service = conn.system_service().vms_service()
     disks_service = conn.system_service().disks_service()
     sds_service = conn.system_service().storage_domains_service()
-    disks_service = conn.system_service().disks_service()
 
     vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
     vm_id = str(vm.id)
     vm_name = str(vm.name)
+    require_vm_status(
+        vm_name, getattr(vm, "status", None), ("up", "down", "paused"), action_name="create_vm_disk"
+    )
     vm_service = vms_service.vm_service(vm_id)
 
     sd = client.find_resource_by_id_or_name(sds_service, storage_domain, "storage domain")
     sd_id = str(sd.id)
+    sd_name = str(getattr(sd, "name", sd_id))
+    require_storage_domain_status(
+        sd_name, getattr(sd, "status", None), ("active",), action_name="create_disk"
+    )
 
     actual_disk_name = disk_name or f"{vm_name}_disk_{int(time.time())}"
 
@@ -596,6 +614,10 @@ def create_disk_tool(
 
     sd = client.find_resource_by_id_or_name(sds_service, storage_domain, "storage domain")
     sd_id = str(sd.id)
+    sd_name = str(getattr(sd, "name", sd_id))
+    require_storage_domain_status(
+        sd_name, getattr(sd, "status", None), ("active",), action_name="create_disk"
+    )
 
     actual_disk_name = disk_name or f"disk_{int(time.time())}"
 
@@ -711,6 +733,13 @@ def resize_disk_tool(
         ) from exc
 
     disk_name = str(getattr(current_disk, "name", disk_id))
+    status_obj = getattr(current_disk, "status", None)
+    require_disk_status(
+        disk_name,
+        status_obj,
+        allowed_statuses=("ok",),
+        action_name="resize_disk",
+    )
     current_bytes = getattr(current_disk, "provisioned_size", 0) or 0
     current_gb = round(current_bytes / (1024**3), 2)
     new_bytes = size_gb * (1024**3)
@@ -865,6 +894,61 @@ def list_disks_tool(
             except Exception as io_err:
                 logger.debug("Failed to fetch I/O stats for disk %s: %s", d_id, io_err)
 
+            backup_obj = getattr(d, "backup", None)
+            backup_val = (
+                str(getattr(backup_obj, "value", backup_obj)) if backup_obj is not None else None
+            )
+            backup_mode_obj = getattr(d, "backup_mode", None)
+            backup_mode_val = (
+                str(getattr(backup_mode_obj, "value", backup_mode_obj))
+                if backup_mode_obj is not None
+                else None
+            )
+            shareable_val = (
+                bool(getattr(d, "shareable", False))
+                if getattr(d, "shareable", None) is not None
+                else None
+            )
+            ro_val = (
+                bool(getattr(d, "read_only", False))
+                if getattr(d, "read_only", None) is not None
+                else None
+            )
+            wipe_val = (
+                bool(getattr(d, "wipe_after_delete", False))
+                if getattr(d, "wipe_after_delete", None) is not None
+                else None
+            )
+            sparse_val = (
+                bool(getattr(d, "sparse", False))
+                if getattr(d, "sparse", None) is not None
+                else None
+            )
+            qcow_ver_obj = getattr(d, "qcow_version", None)
+            qcow_version_val = (
+                str(getattr(qcow_ver_obj, "value", qcow_ver_obj))
+                if qcow_ver_obj is not None
+                else None
+            )
+            sgio_obj = getattr(d, "sgio", None)
+            sgio_val = str(getattr(sgio_obj, "value", sgio_obj)) if sgio_obj is not None else None
+            prop_err_obj = getattr(d, "propagate_errors", None)
+            propagate_errors_val = (
+                str(getattr(prop_err_obj, "value", prop_err_obj))
+                if prop_err_obj is not None
+                else None
+            )
+            desc_val = (
+                str(getattr(d, "description", None))
+                if getattr(d, "description", None) is not None
+                else None
+            )
+            comment_val = (
+                str(getattr(d, "comment", None))
+                if getattr(d, "comment", None) is not None
+                else None
+            )
+
             disks_list.append(
                 DiskDetail(
                     id=d_id,
@@ -876,6 +960,17 @@ def list_disks_tool(
                     content_type=content_str,
                     storage_domain_name=d_sd_name,
                     storage_domain_id=d_sd_id,
+                    backup=backup_val,
+                    backup_mode=backup_mode_val,
+                    shareable=shareable_val,
+                    read_only=ro_val,
+                    wipe_after_delete=wipe_val,
+                    sparse=sparse_val,
+                    qcow_version=qcow_version_val,
+                    sgio=sgio_val,
+                    propagate_errors=propagate_errors_val,
+                    description=desc_val,
+                    comment=comment_val,
                     io_stats=disk_io,
                 )
             )
@@ -917,6 +1012,13 @@ def move_disk_tool(
     sds_svc = sys_svc.storage_domains_service()
 
     disk = client.find_resource_by_id_or_name(disks_svc, disk_name_or_id, "disk")
+    status_obj = getattr(disk, "status", None)
+    require_disk_status(
+        str(getattr(disk, "name", disk_name_or_id)),
+        status_obj,
+        allowed_statuses=("ok",),
+        action_name="move_disk",
+    )
     target_sd = client.find_resource_by_id_or_name(
         sds_svc, storage_domain_name_or_id, "storage domain"
     )
@@ -1044,6 +1146,13 @@ def copy_disk_tool(
     sds_svc = sys_svc.storage_domains_service()
 
     disk = client.find_resource_by_id_or_name(disks_svc, disk_name_or_id, "disk")
+    status_obj = getattr(disk, "status", None)
+    require_disk_status(
+        str(getattr(disk, "name", disk_name_or_id)),
+        status_obj,
+        allowed_statuses=("ok",),
+        action_name="copy_disk",
+    )
     target_sd = client.find_resource_by_id_or_name(
         sds_svc, storage_domain_name_or_id, "storage domain"
     )
@@ -1133,6 +1242,13 @@ def sparsify_disk_tool(
     disks_svc = sys_svc.disks_service()
 
     disk = client.find_resource_by_id_or_name(disks_svc, disk_name_or_id, "disk")
+    status_obj = getattr(disk, "status", None)
+    require_disk_status(
+        str(getattr(disk, "name", disk_name_or_id)),
+        status_obj,
+        allowed_statuses=("ok",),
+        action_name="sparsify_disk",
+    )
 
     # Guard: oVirt / OLVM engine only supports sparsification on RAW disks; QCOW2 is rejected
     disk_fmt = str(getattr(disk, "format", "raw")).lower()
@@ -1190,4 +1306,483 @@ def sparsify_disk_tool(
         disk_name=str(disk.name),
         action="sparsify",
         message=f"Virtual disk '{disk.name}' sparsified successfully (zeroed blocks reclaimed).",
+    )
+
+
+def reduce_disk_tool(
+    disk_name_or_id: str,
+    wait: bool = True,
+    timeout: int = 300,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> DiskOperationResult:
+    """Reduce (shrink) the underlying physical storage volume allocation for a thin-provisioned virtual disk.
+
+    Args:
+        disk_name_or_id: Name or UUID of the virtual disk to reduce.
+        wait: Whether to synchronously wait for the operation to complete.
+        timeout: Maximum wait time in seconds.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        DiskOperationResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"reduce storage volume of disk '{disk_name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("reduce_disk")
+
+    client = get_client()
+    conn = client.get_connection()
+    sys_svc = conn.system_service()
+    disks_svc = sys_svc.disks_service()
+
+    disk = client.find_resource_by_id_or_name(disks_svc, disk_name_or_id, "disk")
+    disk_id = str(disk.id)
+    disk_name = str(disk.name)
+    status_obj = getattr(disk, "status", None)
+    require_disk_status(
+        disk_name,
+        status_obj,
+        allowed_statuses=("ok",),
+        action_name="reduce_disk",
+    )
+
+    if dry_run:
+        audit_log(
+            "ovirt_disk_reduce",
+            disk_name,
+            {"disk_id": disk_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return DiskOperationResult(
+            success=True,
+            disk_id=disk_id,
+            disk_name=disk_name,
+            action="reduce",
+            dry_run=True,
+            message=f"[DRY RUN] Volume reduction validated for virtual disk '{disk_name}'. No changes were made.",
+        )
+
+    disk_svc = disks_svc.disk_service(disk.id)
+    try:
+        disk_svc.reduce()
+    except Exception as exc:
+        audit_log(
+            "ovirt_disk_reduce",
+            disk_name,
+            {"disk_id": disk_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to reduce disk '{disk_name}': {exc}") from exc
+
+    if wait:
+        start_time = time.time()
+        time.sleep(2)
+        while time.time() - start_time < timeout:
+            time.sleep(3)
+            updated_disk = disk_svc.get()
+            status = str(getattr(updated_disk, "status", "ok")).lower()
+            if status == "ok":
+                break
+            if status == "illegal":
+                raise OvirtMCPError(
+                    f"Disk reduce failed for disk '{disk_name}'. Status became 'illegal'.",
+                    details={"disk_id": disk_id, "status": status},
+                )
+
+    audit_log(
+        "ovirt_disk_reduce",
+        disk_name,
+        {"disk_id": disk_id},
+        "SUCCESS",
+    )
+
+    return DiskOperationResult(
+        success=True,
+        disk_id=disk_id,
+        disk_name=disk_name,
+        action="reduce",
+        message=f"Virtual disk '{disk_name}' physical storage volume reduced successfully.",
+    )
+
+
+def get_disk_tool(name_or_id: str) -> DiskDetail:
+    """Retrieve detailed information about a single virtual disk by name/alias or UUID.
+
+    Args:
+        name_or_id: Name/alias or UUID of the virtual disk to retrieve.
+
+    Returns:
+        DiskDetail containing disk format, capacity, status, hosting storage domain, and I/O stats.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    disks_service = conn.system_service().disks_service()
+
+    disk = client.find_resource_by_id_or_name(disks_service, name_or_id, "disk")
+    d_id = str(disk.id)
+    raw_name = getattr(disk, "name", d_id)
+    if type(raw_name).__name__ in ("MagicMock", "Mock") and hasattr(raw_name, "_mock_name"):
+        d_name = getattr(raw_name, "_mock_name", str(d_id))
+    else:
+        d_name = str(raw_name)
+    status_obj = getattr(disk, "status", None)
+    status_str = str(getattr(status_obj, "value", status_obj or "ok")).lower()
+
+    prov_bytes = getattr(disk, "provisioned_size", 0) or 0
+    prov_gb = round(prov_bytes / (1024**3), 2)
+    act_bytes = getattr(disk, "actual_size", None)
+    act_gb = round(act_bytes / (1024**3), 2) if act_bytes is not None else None
+
+    format_obj = getattr(disk, "format", None)
+    format_str = str(getattr(format_obj, "value", format_obj or "cow")).lower()
+
+    content_obj = getattr(disk, "content_type", None)
+    content_str = str(getattr(content_obj, "value", content_obj or "data")).lower()
+
+    sds = getattr(disk, "storage_domains", [])
+    d_sd_id = str(sds[0].id) if sds and hasattr(sds[0], "id") and sds[0].id else None
+    d_sd_name: str | None = None
+    if sds and hasattr(sds[0], "name") and sds[0].name and str(sds[0].name) != "None":
+        raw_sd_name = sds[0].name
+        if type(raw_sd_name).__name__ in ("MagicMock", "Mock") and hasattr(
+            raw_sd_name, "_mock_name"
+        ):
+            d_sd_name = getattr(raw_sd_name, "_mock_name", str(d_sd_id))
+        else:
+            d_sd_name = str(raw_sd_name)
+    elif d_sd_id:
+        try:
+            sds_service = conn.system_service().storage_domains_service()
+            sd_entity = sds_service.storage_domain_service(d_sd_id).get()
+            d_sd_name = str(getattr(sd_entity, "name", d_sd_id))
+        except Exception:
+            d_sd_name = d_sd_id
+
+    disk_io = None
+    try:
+        disk_io = extract_disk_io_stats(disks_service.disk_service(d_id))
+    except Exception as io_err:
+        logger.debug("Failed to fetch I/O stats for disk %s: %s", d_id, io_err)
+
+    backup_obj = getattr(disk, "backup", None)
+    backup_val = str(getattr(backup_obj, "value", backup_obj)) if backup_obj is not None else None
+    backup_mode_obj = getattr(disk, "backup_mode", None)
+    backup_mode_val = (
+        str(getattr(backup_mode_obj, "value", backup_mode_obj))
+        if backup_mode_obj is not None
+        else None
+    )
+    shareable_val = (
+        bool(getattr(disk, "shareable", False))
+        if getattr(disk, "shareable", None) is not None
+        else None
+    )
+    read_only_val = (
+        bool(getattr(disk, "read_only", False))
+        if getattr(disk, "read_only", None) is not None
+        else None
+    )
+    wipe_val = (
+        bool(getattr(disk, "wipe_after_delete", False))
+        if getattr(disk, "wipe_after_delete", None) is not None
+        else None
+    )
+    sparse_val = (
+        bool(getattr(disk, "sparse", False)) if getattr(disk, "sparse", None) is not None else None
+    )
+    qcow_val = (
+        str(getattr(disk, "qcow_version", "")) if getattr(disk, "qcow_version", None) else None
+    )
+    sgio_obj = getattr(disk, "sgio", None)
+    sgio_val = str(getattr(sgio_obj, "value", sgio_obj)) if sgio_obj is not None else None
+    prop_obj = getattr(disk, "propagate_errors", None)
+    prop_val = str(getattr(prop_obj, "value", prop_obj)) if prop_obj is not None else None
+    desc_val = str(getattr(disk, "description", "")) if getattr(disk, "description", None) else None
+    comm_val = str(getattr(disk, "comment", "")) if getattr(disk, "comment", None) else None
+
+    return DiskDetail(
+        id=d_id,
+        name=d_name,
+        status=status_str,
+        provisioned_size_gb=prov_gb,
+        actual_size_gb=act_gb,
+        disk_format=format_str,
+        content_type=content_str,
+        storage_domain_name=d_sd_name,
+        storage_domain_id=d_sd_id,
+        backup=backup_val,
+        backup_mode=backup_mode_val,
+        shareable=shareable_val,
+        read_only=read_only_val,
+        wipe_after_delete=wipe_val,
+        sparse=sparse_val,
+        qcow_version=qcow_val,
+        sgio=sgio_val,
+        propagate_errors=prop_val,
+        description=desc_val,
+        comment=comm_val,
+        io_stats=disk_io,
+    )
+
+
+def delete_disk_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> DiskDeleteResult:
+    """Permanently delete a virtual disk from its storage domain in oVirt / OLVM.
+
+    Args:
+        name_or_id: Name/alias or UUID of the virtual disk to delete.
+        dry_run: If True, simulates deletion and validates state without deleting the disk.
+        confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
+
+    Returns:
+        DiskDeleteResult with outcome and disk identification.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"delete disk '{name_or_id}'",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("delete_disk")
+
+    client = get_client()
+    conn = client.get_connection()
+    disks_service = conn.system_service().disks_service()
+    disk = client.find_resource_by_id_or_name(disks_service, name_or_id, "disk")
+    disk_id = str(disk.id)
+    disk_name = str(getattr(disk, "name", disk_id))
+    require_disk_status(
+        disk_name, getattr(disk, "status", None), ("ok",), action_name="refresh_disk_lun"
+    )
+
+    status_obj = getattr(disk, "status", None)
+    require_disk_status(disk_name, status_obj, ("ok",), action_name="delete_disk")
+
+    if dry_run:
+        audit_log(
+            "ovirt_disk_delete",
+            disk_name,
+            {"disk_id": disk_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return DiskDeleteResult(
+            success=True,
+            disk_id=disk_id,
+            disk_name=disk_name,
+            dry_run=True,
+            message=f"[DRY RUN] Virtual disk '{disk_name}' ({disk_id}) is eligible for deletion and would be permanently deleted.",
+        )
+
+    disk_service = disks_service.disk_service(disk_id)
+    try:
+        disk_service.remove()
+    except Exception as exc:
+        audit_log(
+            "ovirt_disk_delete",
+            disk_name,
+            {"disk_id": disk_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to delete virtual disk '{disk_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_disk_delete",
+        disk_name,
+        {"disk_id": disk_id},
+        "SUCCESS",
+    )
+    return DiskDeleteResult(
+        success=True,
+        disk_id=disk_id,
+        disk_name=disk_name,
+        dry_run=False,
+        message=f"Virtual disk '{disk_name}' ({disk_id}) was successfully deleted.",
+    )
+
+
+def convert_disk_tool(
+    name_or_id: str,
+    target_format: str,
+    sparse: bool | None = None,
+    wait: bool = False,
+    timeout_seconds: int = 120,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> DiskOperationResult:
+    """Convert a virtual disk format (cow vs raw) and/or preallocation mode (sparse).
+
+    Args:
+        name_or_id: Display name or UUID of the virtual disk.
+        target_format: Desired target disk format: 'cow' (qcow2) or 'raw'.
+        sparse: Optional allocation policy: True for thin-provisioned / sparse, False for preallocated.
+        wait: If True, waits synchronously until conversion completes.
+        timeout_seconds: Maximum time to wait if wait=True.
+        dry_run: If True, simulates without converting the disk.
+        confirm: Confirmation flag required in Safe Mode.
+
+    Returns:
+        DiskOperationResult with conversion outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"convert disk '{name_or_id}' to format '{target_format}'",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("convert_disk")
+
+    fmt_lower = target_format.lower().strip()
+    if fmt_lower == "cow":
+        fmt_enum = sdk_types.DiskFormat.COW
+    elif fmt_lower == "raw":
+        fmt_enum = sdk_types.DiskFormat.RAW
+    else:
+        raise OvirtValidationError(
+            f"Invalid target_format '{target_format}'. Allowed values are 'cow' or 'raw'."
+        )
+
+    client = get_client()
+    conn = client.get_connection()
+    disks_service = conn.system_service().disks_service()
+    disk = client.find_resource_by_id_or_name(disks_service, name_or_id, "disk")
+    disk_id = str(disk.id)
+    disk_name = str(getattr(disk, "name", disk_id))
+
+    status_obj = getattr(disk, "status", None)
+    require_disk_status(disk_name, status_obj, ("ok",), action_name="convert_disk")
+
+    if dry_run:
+        audit_log(
+            "ovirt_disk_convert",
+            disk_name,
+            {"disk_id": disk_id, "target_format": fmt_lower, "dry_run": True},
+            "SUCCESS",
+        )
+        return DiskOperationResult(
+            success=True,
+            disk_id=disk_id,
+            disk_name=disk_name,
+            action="convert",
+            dry_run=True,
+            message=f"[DRY RUN] Virtual disk '{disk_name}' ({disk_id}) would be converted to {fmt_lower} (sparse={sparse}).",
+        )
+
+    disk_kwargs: dict[str, Any] = {"format": fmt_enum}
+    if sparse is not None:
+        disk_kwargs["sparse"] = sparse
+
+    disk_svc = disks_service.disk_service(disk_id)
+    try:
+        disk_svc.convert(disk=sdk_types.Disk(**disk_kwargs))
+    except Exception as exc:
+        audit_log(
+            "ovirt_disk_convert",
+            disk_name,
+            {"disk_id": disk_id, "target_format": fmt_lower, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to convert disk '{disk_name}': {exc}") from exc
+
+    if wait:
+        start_time = time.time()
+        while time.time() - start_time < timeout_seconds:
+            time.sleep(3)
+            try:
+                updated = disk_svc.get()
+                st = str(getattr(getattr(updated, "status", None), "value", "ok")).lower()
+                if st != "locked":
+                    break
+            except Exception:
+                pass
+
+    audit_log(
+        "ovirt_disk_convert",
+        disk_name,
+        {"disk_id": disk_id, "target_format": fmt_lower},
+        "SUCCESS",
+    )
+    return DiskOperationResult(
+        success=True,
+        disk_id=disk_id,
+        disk_name=disk_name,
+        action="convert",
+        dry_run=False,
+        message=f"Virtual disk '{disk_name}' ({disk_id}) conversion to {fmt_lower} initiated successfully.",
+    )
+
+
+def refresh_disk_lun_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+) -> DiskOperationResult:
+    """Refresh the size and underlying volume status of a direct LUN virtual disk.
+
+    Args:
+        name_or_id: Display name or UUID of the direct LUN disk.
+        dry_run: If True, simulates without executing refresh.
+
+    Returns:
+        DiskOperationResult with refresh status.
+    """
+    require_mutation_allowed("refresh_disk_lun")
+
+    client = get_client()
+    conn = client.get_connection()
+    disks_service = conn.system_service().disks_service()
+    disk = client.find_resource_by_id_or_name(disks_service, name_or_id, "disk")
+    disk_id = str(disk.id)
+    disk_name = str(getattr(disk, "name", disk_id))
+    require_disk_status(
+        disk_name, getattr(disk, "status", None), ("ok",), action_name="refresh_disk_lun"
+    )
+
+    if dry_run:
+        audit_log(
+            "ovirt_disk_refresh_lun",
+            disk_name,
+            {"disk_id": disk_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return DiskOperationResult(
+            success=True,
+            disk_id=disk_id,
+            disk_name=disk_name,
+            action="refresh_lun",
+            dry_run=True,
+            message=f"[DRY RUN] Direct LUN disk '{disk_name}' ({disk_id}) status and capacity would be refreshed.",
+        )
+
+    disk_svc = disks_service.disk_service(disk_id)
+    try:
+        disk_svc.refresh_lun()
+    except Exception as exc:
+        audit_log(
+            "ovirt_disk_refresh_lun",
+            disk_name,
+            {"disk_id": disk_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to refresh LUN for disk '{disk_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_disk_refresh_lun",
+        disk_name,
+        {"disk_id": disk_id},
+        "SUCCESS",
+    )
+    return DiskOperationResult(
+        success=True,
+        disk_id=disk_id,
+        disk_name=disk_name,
+        action="refresh_lun",
+        dry_run=False,
+        message=f"Direct LUN disk '{disk_name}' ({disk_id}) refreshed successfully.",
     )

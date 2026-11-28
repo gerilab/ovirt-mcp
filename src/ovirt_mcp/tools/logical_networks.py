@@ -1,6 +1,7 @@
 """Tools for managing oVirt / OLVM Logical Networks (VLANs, MTU, cluster networks)."""
 
 import logging
+from typing import Any
 
 import ovirtsdk4.types as sdk_types
 
@@ -374,3 +375,85 @@ def delete_logical_network_tool(
         action="delete",
         message=f"Logical network '{net_name}' successfully deleted from Data Center '{dc_name}'.",
     )
+
+
+def update_logical_network_tool(
+    name_or_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    vlan_tag: int | None = None,
+    mtu: int | None = None,
+    dry_run: bool = False,
+) -> LogicalNetworkDetail:
+    """Update logical network configuration (name, description, comment, VLAN tag, or MTU).
+
+    Args:
+        name_or_id: Name or UUID of the logical network to update.
+        name: Optional updated name for the network.
+        description: Optional updated description.
+        comment: Optional updated comment.
+        vlan_tag: Optional updated 802.1Q VLAN ID (0-4094).
+        mtu: Optional updated MTU in bytes (e.g. 1500 or 9000).
+        dry_run: If True, validates update parameters without applying changes.
+
+    Returns:
+        Updated LogicalNetworkDetail representation.
+    """
+    require_mutation_allowed("update_network")
+
+    client = get_client()
+    conn = client.get_connection()
+    nets_svc = conn.system_service().networks_service()
+
+    net = client.find_resource_by_id_or_name(nets_svc, name_or_id, "network")
+    net_id = str(net.id)
+    net_name = str(getattr(net, "name", net_id))
+
+    net_kwargs: dict[str, Any] = {}
+    if name is not None:
+        net_kwargs["name"] = name
+    if description is not None:
+        net_kwargs["description"] = description
+    if comment is not None:
+        net_kwargs["comment"] = comment
+    if vlan_tag is not None:
+        if vlan_tag < 0 or vlan_tag > 4094:
+            raise OvirtValidationError(f"Invalid VLAN tag {vlan_tag}. Must be between 0 and 4094.")
+        net_kwargs["vlan"] = sdk_types.Vlan(id=vlan_tag) if vlan_tag > 0 else None
+    if mtu is not None:
+        if mtu < 68 or mtu > 65535:
+            raise OvirtValidationError(f"Invalid MTU {mtu}. Must be between 68 and 65535 bytes.")
+        net_kwargs["mtu"] = mtu
+
+    if not net_kwargs:
+        raise OvirtValidationError("No attributes provided to update for logical network.")
+
+    if dry_run:
+        audit_log(
+            "ovirt_network_update",
+            net_name,
+            {"network_id": net_id, "updates": list(net_kwargs.keys()), "dry_run": True},
+            "SUCCESS",
+        )
+        return get_logical_network_tool(net_id)
+
+    net_svc = nets_svc.network_service(net_id)
+    try:
+        net_svc.update(sdk_types.Network(**net_kwargs))
+    except Exception as exc:
+        audit_log(
+            "ovirt_network_update",
+            net_name,
+            {"network_id": net_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to update logical network '{net_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_network_update",
+        net_name,
+        {"network_id": net_id, "updates": list(net_kwargs.keys())},
+        "SUCCESS",
+    )
+    return get_logical_network_tool(net_id)

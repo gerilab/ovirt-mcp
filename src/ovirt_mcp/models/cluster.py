@@ -240,3 +240,16 @@ class ClusterDetail(ClusterSummary):
     upgrade_percent_complete: int | None = Field(
         default=None, description="Progress percentage of active rolling cluster upgrade."
     )
+
+
+class ClusterOperationResult(BaseModel):
+    """Result of an operational action on a virtualization cluster."""
+
+    success: bool = Field(description="Whether the cluster operation succeeded.")
+    cluster_id: str = Field(description="UUID of the cluster.")
+    cluster_name: str = Field(description="Name of the cluster.")
+    action: str = Field(
+        description="Action executed ('sync_all_networks', 'reset_emulated_machine')."
+    )
+    dry_run: bool = Field(default=False, description="Whether this was a dry-run simulation.")
+    message: str = Field(description="Human-readable result summary.")

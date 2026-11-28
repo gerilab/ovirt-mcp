@@ -2,6 +2,7 @@
 
 import logging
 import time
+from typing import Any
 
 import ovirtsdk4.types as sdk_types
 
@@ -17,6 +18,8 @@ from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
     require_mutation_allowed,
+    require_template_status,
+    require_vm_status,
 )
 
 logger = logging.getLogger("ovirt_mcp.tools.templates")
@@ -236,13 +239,12 @@ def create_template_from_vm_tool(
     vm = client.find_resource_by_id_or_name(vms_svc, vm_name_or_id, "vm")
 
     # Guard: VM must be powered down (down) before template creation
-    vm_status = str(getattr(vm, "status", "unknown")).lower()
-    if vm_status != "down":
-        raise OvirtValidationError(
-            f"Cannot create template from VM '{vm.name}': VM is currently '{vm_status}'. "
-            "oVirt requires the virtual machine to be completely stopped ('down') to snapshot disk images.",
-            details={"vm_id": str(vm.id), "vm_name": str(vm.name), "status": vm_status},
-        )
+    require_vm_status(
+        str(getattr(vm, "name", vm_name_or_id)),
+        getattr(vm, "status", None),
+        ("down",),
+        action_name="create_template_from_vm",
+    )
 
     # Check for name collision
     existing = t_svc.list(search=f"name={template_name}")
@@ -365,6 +367,13 @@ def delete_template_tool(
             details={"template_id": t_id, "template_name": t_name},
         )
 
+    require_template_status(
+        t_name,
+        getattr(template, "status", None),
+        ("ok",),
+        action_name="delete_template",
+    )
+
     if dry_run:
         audit_log(
             "ovirt_template_delete",
@@ -422,3 +431,168 @@ def delete_template_tool(
         action="delete",
         message=f"Template '{t_name}' ({t_id}) successfully deleted.",
     )
+
+
+def export_template_tool(
+    name_or_id: str,
+    storage_domain: str,
+    exclusive: bool = False,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> TemplateResult:
+    """Export a template to an export storage domain.
+
+    Args:
+        name_or_id: Template name or UUID.
+        storage_domain: Name or UUID of the destination export storage domain.
+        exclusive: Whether to overwrite existing template in the export domain.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        TemplateResult with export outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"export template '{name_or_id}' to storage domain '{storage_domain}'", confirm
+        )
+    else:
+        require_mutation_allowed("export_template")
+
+    client = get_client()
+    conn = client.get_connection()
+    t_svc = conn.system_service().templates_service()
+    template = client.find_resource_by_id_or_name(t_svc, name_or_id, "template")
+    t_id = str(template.id)
+    t_name = str(getattr(template, "name", t_id))
+
+    sds_svc = conn.system_service().storage_domains_service()
+    sd = client.find_resource_by_id_or_name(sds_svc, storage_domain, "storage domain")
+    sd_id = str(sd.id)
+    sd_name = str(getattr(sd, "name", sd_id))
+
+    require_template_status(
+        t_name,
+        getattr(template, "status", None),
+        ("ok",),
+        action_name="export_template",
+    )
+
+    if dry_run:
+        return TemplateResult(
+            success=True,
+            template_id=t_id,
+            template_name=t_name,
+            action="export",
+            dry_run=True,
+            message=f"[DRY RUN] Export template '{t_name}' to storage domain '{sd_name}' validated (exclusive={exclusive}).",
+        )
+
+    try:
+        t_inst = t_svc.template_service(t_id)
+        t_inst.export(
+            storage_domain=sdk_types.StorageDomain(id=sd_id),
+            exclusive=exclusive,
+        )
+        audit_log(
+            "ovirt_template_export",
+            t_name,
+            {"template_id": t_id, "storage_domain_id": sd_id, "exclusive": exclusive},
+            "SUCCESS",
+        )
+        return TemplateResult(
+            success=True,
+            template_id=t_id,
+            template_name=t_name,
+            action="export",
+            dry_run=False,
+            message=f"Export initiated successfully for template '{t_name}' to storage domain '{sd_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_template_export",
+            t_name,
+            {"template_id": t_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to export template '{t_name}' ({t_id}) to storage domain '{sd_name}': {exc}",
+            details={"template_id": t_id, "storage_domain": sd_name, "error": str(exc)},
+        ) from exc
+
+
+def update_template_tool(
+    name_or_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    dry_run: bool = False,
+) -> TemplateDetail:
+    """Update virtual machine template properties (name, description, or comment).
+
+    Args:
+        name_or_id: Name or UUID of the template to update.
+        name: Optional updated name for the template.
+        description: Optional updated description.
+        comment: Optional updated comment.
+        dry_run: If True, validates update parameters without applying changes.
+
+    Returns:
+        Updated TemplateDetail representation.
+    """
+    require_mutation_allowed("update_template")
+
+    client = get_client()
+    conn = client.get_connection()
+    t_svc = conn.system_service().templates_service()
+
+    template = client.find_resource_by_id_or_name(t_svc, name_or_id, "template")
+    t_id = str(template.id)
+    t_name = str(getattr(template, "name", t_id))
+
+    require_template_status(
+        t_name,
+        getattr(template, "status", None),
+        ("ok",),
+        action_name="update_template",
+    )
+
+    template_kwargs: dict[str, Any] = {}
+    if name is not None:
+        template_kwargs["name"] = name
+    if description is not None:
+        template_kwargs["description"] = description
+    if comment is not None:
+        template_kwargs["comment"] = comment
+
+    if not template_kwargs:
+        raise OvirtValidationError("No attributes provided to update for template.")
+
+    if dry_run:
+        audit_log(
+            "ovirt_template_update",
+            t_name,
+            {"template_id": t_id, "updates": list(template_kwargs.keys()), "dry_run": True},
+            "SUCCESS",
+        )
+        return get_template_tool(t_id)
+
+    template_service = t_svc.template_service(t_id)
+    try:
+        template_service.update(sdk_types.Template(**template_kwargs))
+    except Exception as exc:
+        audit_log(
+            "ovirt_template_update",
+            t_name,
+            {"template_id": t_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to update template '{t_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_template_update",
+        t_name,
+        {"template_id": t_id, "updates": list(template_kwargs.keys())},
+        "SUCCESS",
+    )
+    return get_template_tool(t_id)

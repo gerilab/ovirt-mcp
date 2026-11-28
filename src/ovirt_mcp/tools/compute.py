@@ -17,6 +17,7 @@ from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
     require_mutation_allowed,
+    require_vm_status,
 )
 
 logger = logging.getLogger("ovirt_mcp.tools.compute")
@@ -228,13 +229,7 @@ def get_vm_console_ticket_tool(
 
     status_obj = getattr(vm, "status", None)
     vm_status = str(getattr(status_obj, "value", status_obj or "")).lower()
-
-    if vm_status != "up":
-        raise OvirtValidationError(
-            f"Cannot generate graphical console ticket: VM '{vm_name}' is in status '{vm_status}'. "
-            "The virtual machine must be powered on (status='up') to connect to its display console.",
-            details={"vm_id": vm_id, "status": vm_status},
-        )
+    require_vm_status(vm_name, vm_status, ("up",), action_name="get_vm_console_ticket")
 
     ticket_spec = sdk_types.Ticket(expiry=expiry_seconds)
 
@@ -300,13 +295,7 @@ def get_vm_console_file_tool(
 
     status_obj = getattr(vm, "status", None)
     vm_status = str(getattr(status_obj, "value", status_obj or "")).lower()
-
-    if vm_status != "up":
-        raise OvirtValidationError(
-            f"Cannot generate graphical console file: VM '{vm_name}' is in status '{vm_status}'. "
-            "The virtual machine must be powered on (status='up') to connect to its display console.",
-            details={"vm_id": vm_id, "status": vm_status},
-        )
+    require_vm_status(vm_name, vm_status, ("up",), action_name="get_vm_console_file")
 
     consoles = vm_service.graphics_consoles_service().list() or []
     if not consoles:

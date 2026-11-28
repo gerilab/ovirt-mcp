@@ -10,9 +10,12 @@ from ovirt_mcp.client.exceptions import (
 )
 from ovirt_mcp.config import OvirtConfig
 from ovirt_mcp.models.host import (
+    HostCreateResult,
+    HostDeleteResult,
     HostDetail,
     HostDeviceInfo,
     HostEvent,
+    HostInstallResult,
     HostLifecycleResult,
     HostNicInfo,
     HostNicLldpInfo,
@@ -24,6 +27,8 @@ from ovirt_mcp.models.host import (
 )
 from ovirt_mcp.tools.hosts import (
     activate_host_tool,
+    create_host_tool,
+    delete_host_tool,
     get_host_stats_tool,
     get_host_tool,
     list_host_devices_tool,
@@ -33,6 +38,7 @@ from ovirt_mcp.tools.hosts import (
     list_host_storage_tool,
     list_hosts_tool,
     maintenance_host_tool,
+    reinstall_host_tool,
     restart_host_tool,
     upgrade_check_host_tool,
     upgrade_host_tool,
@@ -67,6 +73,11 @@ def _setup_mock_host(
     mock_host.address = "192.0.2.12"
     mock_host.port = 54321
     mock_host.update_available = True
+    mock_host.reinstallation_required = False
+    mock_host.status_detail = None
+    mock_ext_status = MagicMock()
+    mock_ext_status.value = "ok"
+    mock_host.external_status = mock_ext_status
     mock_iscsi = MagicMock()
     mock_iscsi.initiator = "iqn.1994-05.com.redhat:42a1b9c0"
     mock_host.iscsi = mock_iscsi
@@ -132,6 +143,9 @@ def test_list_hosts_success() -> None:
     assert h.total_memory_gb == 32.0
     assert h.active_vms_count == 0
     assert h.update_available is True
+    assert h.reinstallation_required is False
+    assert h.status_detail is None
+    assert h.external_status == "ok"
     assert h.iscsi_initiator_name == "iqn.1994-05.com.redhat:42a1b9c0"
 
 
@@ -151,6 +165,9 @@ def test_get_host_detail_success() -> None:
     assert detail.hardware.manufacturer == "VMware, Inc."
     assert detail.power_management.enabled is False
     assert detail.update_available is True
+    assert detail.reinstallation_required is False
+    assert detail.status_detail is None
+    assert detail.external_status == "ok"
     assert detail.iscsi_initiator_name == "iqn.1994-05.com.redhat:42a1b9c0"
     assert detail.vdsm_port == 54321
 
@@ -481,6 +498,93 @@ def test_upgrade_host_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "upgrade initiated successfully" in res.message
 
 
+def test_reinstall_host_safe_mode_unconfirmed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    with pytest.raises(OvirtValidationError) as exc_info:
+        reinstall_host_tool("olvmhost002.example.com", confirm=False)
+    assert "confirm=True" in str(exc_info.value)
+
+
+def test_reinstall_host_up_status_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=False),
+    )
+    mock_client, _, _ = _setup_mock_host(status_str="up")
+
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError) as exc_info,
+    ):
+        reinstall_host_tool("olvmhost002.example.com", confirm=True)
+
+    assert "requires the hypervisor host to be in 'maintenance'" in str(exc_info.value)
+
+
+def test_reinstall_host_read_only_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=True, mcp_safe_mode=False),
+    )
+    mock_client, _, _ = _setup_mock_host(status_str="maintenance")
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtPermissionError) as exc_info,
+    ):
+        reinstall_host_tool("olvmhost002.example.com", confirm=True)
+    assert "read-only mode" in str(exc_info.value)
+
+
+def test_reinstall_host_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_host_service, _ = _setup_mock_host(status_str="maintenance")
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = reinstall_host_tool("olvmhost002.example.com", confirm=False, dry_run=True)
+
+    assert isinstance(res, HostInstallResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert "[DRY RUN]" in res.message
+    mock_host_service.install.assert_not_called()
+
+
+def test_reinstall_host_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_host_service, _ = _setup_mock_host(status_str="maintenance")
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = reinstall_host_tool(
+            "olvmhost002.example.com",
+            root_password="secretpassword",
+            activate=True,
+            reboot=True,
+            confirm=True,
+            async_=True,
+        )
+
+    mock_host_service.install.assert_called_once_with(
+        root_password="secretpassword",
+        activate=True,
+        reboot=True,
+        async_=True,
+    )
+    assert isinstance(res, HostInstallResult)
+    assert res.success is True
+    assert res.action == "reinstall"
+    assert res.status == "installing"
+    assert "reinstallation initiated successfully" in res.message
+
+
 # ── NICS, NUMA, DEVICES, EVENTS TESTS ─────────────────────────────────────────
 
 
@@ -717,3 +821,292 @@ def test_list_host_events_success() -> None:
     assert events[0].id == "event-101"
     assert events[0].severity == "normal"
     assert "was set to Up" in events[0].description
+
+
+def test_delete_host_safe_mode_unconfirmed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    with pytest.raises(OvirtValidationError) as exc_info:
+        delete_host_tool("olvmhost002.example.com", confirm=False)
+    assert "confirm=True" in str(exc_info.value)
+
+
+def test_delete_host_read_only_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=True, mcp_safe_mode=False),
+    )
+    mock_client, _, _ = _setup_mock_host(status_str="maintenance")
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtPermissionError) as exc_info,
+    ):
+        delete_host_tool("olvmhost002.example.com", confirm=True)
+    assert "read-only mode" in str(exc_info.value)
+
+
+def test_delete_host_not_in_maintenance_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=False),
+    )
+    mock_client, _, _ = _setup_mock_host(status_str="up")
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError) as exc_info,
+    ):
+        delete_host_tool("olvmhost002.example.com", confirm=True)
+    assert "Move the host to maintenance mode first" in str(exc_info.value)
+
+
+def test_delete_host_active_vms_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=False),
+    )
+    mock_client, _, _ = _setup_mock_host(status_str="maintenance")
+    mock_vm = MagicMock(name="active-vm-01")
+    mock_client.get_connection().system_service().vms_service().list.return_value = [mock_vm]
+
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError) as exc_info,
+    ):
+        delete_host_tool("olvmhost002.example.com", confirm=True)
+    assert "still has active running VMs" in str(exc_info.value)
+
+
+def test_delete_host_spm_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=False),
+    )
+    mock_client, _, mock_host = _setup_mock_host(status_str="maintenance")
+    mock_client.get_connection().system_service().vms_service().list.return_value = []
+    mock_host.spm.status.value = "spm"
+
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError) as exc_info,
+    ):
+        delete_host_tool("olvmhost002.example.com", confirm=True)
+    assert "currently the Storage Pool Manager" in str(exc_info.value)
+
+
+def test_delete_host_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_host_service, mock_host = _setup_mock_host(status_str="maintenance")
+    mock_client.get_connection().system_service().vms_service().list.return_value = []
+    mock_host.spm.status.value = "none"
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = delete_host_tool("olvmhost002.example.com", confirm=False, dry_run=True)
+
+    assert isinstance(res, HostDeleteResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert "[DRY RUN]" in res.message
+    mock_host_service.remove.assert_not_called()
+
+
+def test_delete_host_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    mock_client, mock_host_service, mock_host = _setup_mock_host(status_str="maintenance")
+    mock_client.get_connection().system_service().vms_service().list.return_value = []
+    mock_host.spm.status.value = "none"
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = delete_host_tool("olvmhost002.example.com", confirm=True, dry_run=False)
+
+    assert isinstance(res, HostDeleteResult)
+    assert res.success is True
+    assert res.dry_run is False
+    assert "successfully removed" in res.message
+    mock_host_service.remove.assert_called_once_with(force=False)
+
+
+def test_delete_host_force_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=False, mcp_safe_mode=True),
+    )
+    # Host is in 'up' status, but force=True bypasses maintenance check
+    mock_client, mock_host_service, _ = _setup_mock_host(status_str="up")
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = delete_host_tool("olvmhost002.example.com", force=True, confirm=True, dry_run=False)
+
+    assert isinstance(res, HostDeleteResult)
+    assert res.success is True
+    assert res.force is True
+    mock_host_service.remove.assert_called_once_with(force=True)
+
+
+def test_create_host_read_only_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ovirt_mcp.tools.guards.get_config",
+        lambda: OvirtConfig(mcp_read_only=True, mcp_safe_mode=False),
+    )
+    with pytest.raises(OvirtPermissionError) as exc_info:
+        create_host_tool(
+            name="newhost.example.com",
+            address="192.0.2.20",
+            cluster="Default",
+        )
+    assert "read-only mode" in str(exc_info.value)
+
+
+def test_create_host_validation_empty_fields() -> None:
+    with pytest.raises(OvirtValidationError, match="Host name cannot be empty"):
+        create_host_tool(name="", address="192.0.2.20", cluster="Default")
+
+    with pytest.raises(OvirtValidationError, match="Host address cannot be empty"):
+        create_host_tool(name="newhost", address="", cluster="Default")
+
+    with pytest.raises(OvirtValidationError, match="Target cluster must be specified"):
+        create_host_tool(name="newhost", address="192.0.2.20", cluster="")
+
+
+def test_create_host_cluster_not_found() -> None:
+    mock_client = MagicMock()
+    mock_client.find_resource_by_id_or_name.return_value = None
+
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError, match="Target cluster 'NonExistent' not found"),
+    ):
+        create_host_tool(
+            name="newhost.example.com",
+            address="192.0.2.20",
+            cluster="NonExistent",
+        )
+
+
+def test_create_host_duplicate_name_blocked() -> None:
+    mock_client = MagicMock()
+    mock_cluster = MagicMock(id="c-1", name="Default")
+    mock_client.find_resource_by_id_or_name.return_value = mock_cluster
+
+    existing_host = MagicMock()
+    existing_host.id = "h-existing"
+    existing_host.name = "existing.example.com"
+    existing_host.address = "192.0.2.99"
+    mock_client.get_connection().system_service().hosts_service().list.return_value = [
+        existing_host
+    ]
+
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError, match="already exists"),
+    ):
+        create_host_tool(
+            name="existing.example.com",
+            address="192.0.2.20",
+            cluster="Default",
+        )
+
+
+def test_create_host_duplicate_address_blocked() -> None:
+    mock_client = MagicMock()
+    mock_cluster = MagicMock(id="c-1", name="Default")
+    mock_client.find_resource_by_id_or_name.return_value = mock_cluster
+
+    existing_host = MagicMock()
+    existing_host.id = "h-existing"
+    existing_host.name = "other.example.com"
+    existing_host.address = "192.0.2.20"
+    mock_client.get_connection().system_service().hosts_service().list.return_value = [
+        existing_host
+    ]
+
+    with (
+        patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client),
+        pytest.raises(OvirtValidationError, match="already exists under name"),
+    ):
+        create_host_tool(
+            name="newhost.example.com",
+            address="192.0.2.20",
+            cluster="Default",
+        )
+
+
+def test_create_host_dry_run() -> None:
+    mock_client = MagicMock()
+    mock_cluster = MagicMock(id="c-1", name="Default")
+    mock_client.find_resource_by_id_or_name.return_value = mock_cluster
+    mock_hosts_service = MagicMock()
+    mock_hosts_service.list.return_value = []
+    mock_client.get_connection().system_service().hosts_service.return_value = mock_hosts_service
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = create_host_tool(
+            name="newhost.example.com",
+            address="192.0.2.20",
+            cluster="Default",
+            dry_run=True,
+        )
+
+    assert isinstance(res, HostCreateResult)
+    assert res.success is True
+    assert res.dry_run is True
+    assert "[DRY RUN]" in res.message
+    assert res.host_name == "newhost.example.com"
+    mock_hosts_service.add.assert_not_called()
+
+
+def test_create_host_success() -> None:
+    mock_client = MagicMock()
+    mock_cluster = MagicMock(id="c-1", name="Default")
+    mock_client.find_resource_by_id_or_name.return_value = mock_cluster
+
+    created_host = MagicMock(
+        id="h-new-123",
+        name="newhost.example.com",
+        status=MagicMock(value="installing"),
+    )
+    mock_hosts_service = MagicMock()
+    mock_hosts_service.list.return_value = []
+    mock_hosts_service.add.return_value = created_host
+    mock_client.get_connection().system_service().hosts_service.return_value = mock_hosts_service
+
+    with patch("ovirt_mcp.tools.hosts.get_client", return_value=mock_client):
+        res = create_host_tool(
+            name="newhost.example.com",
+            address="192.0.2.20",
+            cluster="Default",
+            root_password="secretpassword",
+            ssh_port=2222,
+            comment="New compute hypervisor",
+            activate=True,
+            reboot=True,
+            deploy_hosted_engine=False,
+            dry_run=False,
+        )
+
+    assert isinstance(res, HostCreateResult)
+    assert res.success is True
+    assert res.dry_run is False
+    assert res.host_id == "h-new-123"
+    assert res.status == "installing"
+    assert "successfully added" in res.message
+
+    mock_hosts_service.add.assert_called_once()
+    call_args, call_kwargs = mock_hosts_service.add.call_args
+    host_spec = call_args[0]
+    assert host_spec.name == "newhost.example.com"
+    assert host_spec.address == "192.0.2.20"
+    assert host_spec.cluster.id == "c-1"
+    assert host_spec.root_password == "secretpassword"
+    assert host_spec.ssh.port == 2222
+    assert host_spec.comment == "New compute hypervisor"
+    assert call_kwargs["activate"] is True
+    assert call_kwargs["reboot"] is True
+    assert call_kwargs["deploy_hosted_engine"] is False

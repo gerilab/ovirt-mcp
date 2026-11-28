@@ -12,7 +12,7 @@ from ovirt_mcp.models.host_network import (
     HostNetworkAttachmentInfo,
     HostNetworkSetupResult,
 )
-from ovirt_mcp.tools.guards import audit_log, require_mutation_allowed
+from ovirt_mcp.tools.guards import audit_log, require_host_status, require_mutation_allowed
 
 logger = logging.getLogger("ovirt_mcp.tools.hosts_network")
 
@@ -124,6 +124,13 @@ def ovirt_host_iscsi_discover(
     hosts_svc = sys_svc.hosts_service()
 
     host = client.find_resource_by_id_or_name(hosts_svc, host_name_or_id, "host")
+    curr_status = getattr(getattr(host, "status", None), "value", None)
+    require_host_status(
+        str(host.name),
+        curr_status,
+        allowed_statuses=("up", "maintenance", "non_operational"),
+        action_name="iscsi_discover",
+    )
     h_svc = hosts_svc.host_service(host.id)
 
     addr_clean = address.strip()
@@ -195,6 +202,13 @@ def ovirt_host_iscsi_login(
     hosts_svc = sys_svc.hosts_service()
 
     host = client.find_resource_by_id_or_name(hosts_svc, host_name_or_id, "host")
+    curr_status = getattr(getattr(host, "status", None), "value", None)
+    require_host_status(
+        str(host.name),
+        curr_status,
+        allowed_statuses=("up", "maintenance", "non_operational"),
+        action_name="iscsi_login",
+    )
     h_svc = hosts_svc.host_service(host.id)
 
     addr_clean = address.strip()
@@ -272,6 +286,13 @@ def ovirt_host_network_sync(
     hosts_svc = sys_svc.hosts_service()
 
     host = client.find_resource_by_id_or_name(hosts_svc, host_name_or_id, "host")
+    curr_status = getattr(getattr(host, "status", None), "value", None)
+    require_host_status(
+        str(host.name),
+        curr_status,
+        allowed_statuses=("up", "maintenance", "non_operational"),
+        action_name="network_sync",
+    )
     h_svc = hosts_svc.host_service(host.id)
 
     attachments = h_svc.network_attachments_service().list()

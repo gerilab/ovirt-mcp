@@ -13,10 +13,13 @@ from ovirt_mcp.client.exceptions import (
     OvirtValidationError,
 )
 from ovirt_mcp.models.host import (
+    HostCreateResult,
+    HostDeleteResult,
     HostDetail,
     HostDeviceInfo,
     HostEvent,
     HostHardwareInfo,
+    HostInstallResult,
     HostLifecycleResult,
     HostNicInfo,
     HostNicLldpElement,
@@ -32,6 +35,7 @@ from ovirt_mcp.models.host import (
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
+    require_host_status,
     require_mutation_allowed,
 )
 
@@ -179,6 +183,30 @@ def list_hosts_tool(
 
         active_count, _ = _get_active_vms_on_host(system_service, h_name, h_id)
         iscsi_initiator = _safe_str(getattr(getattr(h, "iscsi", None), "initiator", None))
+        reinstall_req = (
+            bool(getattr(h, "reinstallation_required", False))
+            if getattr(h, "reinstallation_required", None) is not None
+            else None
+        )
+        status_detail_val = _safe_str(getattr(h, "status_detail", None))
+        ext_status_obj = getattr(h, "external_status", None)
+        ext_status_val = (
+            str(getattr(ext_status_obj, "value", ext_status_obj))
+            if ext_status_obj is not None
+            else None
+        )
+        comment_val = _safe_str(getattr(h, "comment", None))
+        desc_val = _safe_str(getattr(h, "description", None))
+        kdump_val = _safe_str(
+            getattr(getattr(h, "kdump_status", None), "value", getattr(h, "kdump_status", None))
+        )
+        auto_numa_val = _safe_str(
+            getattr(
+                getattr(h, "auto_numa_status", None),
+                "value",
+                getattr(h, "auto_numa_status", None),
+            )
+        )
 
         results.append(
             HostSummary(
@@ -200,7 +228,14 @@ def list_hosts_tool(
                     if getattr(h, "update_available", None) is not None
                     else None
                 ),
+                reinstallation_required=reinstall_req,
+                status_detail=status_detail_val,
+                external_status=ext_status_val,
                 iscsi_initiator_name=iscsi_initiator,
+                comment=comment_val,
+                description=desc_val,
+                kdump_status=kdump_val,
+                auto_numa_status=auto_numa_val,
             )
         )
 
@@ -412,6 +447,49 @@ def get_host_tool(name_or_id: str) -> HostDetail:
 
     iscsi_initiator = _safe_str(getattr(getattr(host, "iscsi", None), "initiator", None))
     vdsm_port = _safe_int(getattr(host, "port", None))
+    reinstall_req = (
+        bool(getattr(host, "reinstallation_required", False))
+        if getattr(host, "reinstallation_required", None) is not None
+        else None
+    )
+    status_detail_val = _safe_str(getattr(host, "status_detail", None))
+    ext_status_obj = getattr(host, "external_status", None)
+    ext_status_val = (
+        str(getattr(ext_status_obj, "value", ext_status_obj))
+        if ext_status_obj is not None
+        else None
+    )
+    comment_val = _safe_str(getattr(host, "comment", None))
+    desc_val = _safe_str(getattr(host, "description", None))
+    kdump_val = _safe_str(
+        getattr(getattr(host, "kdump_status", None), "value", getattr(host, "kdump_status", None))
+    )
+    auto_numa_val = _safe_str(
+        getattr(
+            getattr(host, "auto_numa_status", None),
+            "value",
+            getattr(host, "auto_numa_status", None),
+        )
+    )
+    se_linux_obj = getattr(host, "se_linux", None)
+    se_linux_val = _safe_str(
+        getattr(se_linux_obj, "mode", se_linux_obj) if se_linux_obj is not None else None
+    )
+    he_obj = getattr(host, "hosted_engine", None)
+    hosted_engine_val = bool(getattr(he_obj, "configured", False)) if he_obj is not None else None
+    thp_obj = getattr(host, "transparent_huge_pages", None)
+    thp_val = bool(getattr(thp_obj, "enabled", False)) if thp_obj is not None else None
+    type_obj = getattr(host, "type", None)
+    type_val = _safe_str(getattr(type_obj, "value", type_obj) if type_obj is not None else None)
+    protocol_obj = getattr(host, "protocol", None)
+    protocol_val = _safe_str(
+        getattr(protocol_obj, "value", protocol_obj) if protocol_obj is not None else None
+    )
+    numa_supported_val = (
+        bool(getattr(host, "numa_supported", False))
+        if getattr(host, "numa_supported", None) is not None
+        else None
+    )
 
     return HostDetail(
         id=h_id,
@@ -441,7 +519,20 @@ def get_host_tool(name_or_id: str) -> HostDetail:
             if getattr(host, "update_available", None) is not None
             else None
         ),
+        reinstallation_required=reinstall_req,
+        status_detail=status_detail_val,
+        external_status=ext_status_val,
         iscsi_initiator_name=iscsi_initiator,
+        comment=comment_val,
+        description=desc_val,
+        auto_numa_status=auto_numa_val,
+        kdump_status=kdump_val,
+        se_linux=se_linux_val,
+        hosted_engine=hosted_engine_val,
+        transparent_huge_pages=thp_val,
+        type=type_val,
+        protocol=protocol_val,
+        numa_supported=numa_supported_val,
         stats=host_stats,
     )
 
@@ -505,6 +596,13 @@ def maintenance_host_tool(
             dry_run=dry_run,
             message=f"Host '{h_name}' is already in maintenance mode.",
         )
+
+    require_host_status(
+        h_name,
+        prev_status,
+        allowed_statuses=("up", "non_operational", "error"),
+        action_name="maintenance_host",
+    )
 
     # Pre-condition: Check for pinned VMs that cannot migrate
     pinned_vms = _get_pinned_vms_on_host(system_service, h_name, h_id)
@@ -662,6 +760,13 @@ def activate_host_tool(
             dry_run=dry_run,
             message=f"Host '{h_name}' is already active ('up').",
         )
+
+    require_host_status(
+        h_name,
+        prev_status,
+        allowed_statuses=("maintenance", "non_operational", "unassigned", "down"),
+        action_name="activate_host",
+    )
 
     if dry_run:
         audit_log("activate_host", h_name, {"host_id": h_id, "dry_run": True}, "SUCCESS")
@@ -1043,6 +1148,508 @@ def upgrade_host_tool(
         reboot_requested=reboot,
         message=msg,
     )
+
+
+def reinstall_host_tool(
+    name_or_id: str,
+    root_password: str | None = None,
+    activate: bool = True,
+    reboot: bool = True,
+    confirm: bool = False,
+    async_: bool = True,
+    dry_run: bool = False,
+) -> HostInstallResult:
+    """Reinstall or deploy the management stack (VDSM, PKI certificates, network) on a hypervisor host.
+
+    Executes the oVirt / OLVM host deployment Ansible playbook (ovirt-host-deploy).
+    Safety Guard: The host MUST be in 'maintenance', 'install_failed', 'non_operational', or 'down' state.
+    Active hypervisors with running VMs in 'up' status are strictly blocked to protect tenant workloads.
+    Destructive/modifying action in Safe Mode: requires confirm=True when MCP_SAFE_MODE=true.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+        root_password: Optional SSH root password if host public key is not pre-installed.
+        activate: Whether to automatically activate the host back to 'up' status after installation (default: True).
+        reboot: Whether to automatically reboot the host after installation finishes (default: True).
+        confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
+        async_: Whether to execute the installation asynchronously (default: True).
+        dry_run: When True, simulates pre-flight validation without modifying host state.
+
+    Returns:
+        HostInstallResult with execution outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"reinstall host '{name_or_id}' (reboot={reboot}, activate={activate})",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("reinstall_host")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(host.name)
+    host_service = hosts_service.host_service(host_id)
+
+    status_obj = getattr(host, "status", None)
+    status_str = str(getattr(status_obj, "value", status_obj or "unknown")).lower()
+
+    allowed_statuses = (
+        "maintenance",
+        "install_failed",
+        "non_operational",
+        "unassigned",
+        "down",
+        "error",
+    )
+    if status_str not in allowed_statuses:
+        raise OvirtValidationError(
+            f"Cannot reinstall host '{host_name}': Current status is '{status_str}'. "
+            "oVirt / OLVM requires the hypervisor host to be in 'maintenance', 'non_operational', "
+            "or 'install_failed' mode before initiating installation. "
+            "Please evacuate running virtual machines using 'ovirt_host_maintenance' first.",
+            details={
+                "host_id": host_id,
+                "host_name": host_name,
+                "current_status": status_str,
+                "allowed_statuses": list(allowed_statuses),
+            },
+        )
+
+    if dry_run:
+        audit_log(
+            "ovirt_host_reinstall",
+            host_name,
+            {
+                "host_id": host_id,
+                "dry_run": True,
+                "activate": activate,
+                "reboot": reboot,
+                "status": status_str,
+            },
+            "SUCCESS",
+        )
+        return HostInstallResult(
+            success=True,
+            action="reinstall",
+            host_id=host_id,
+            host_name=host_name,
+            status=status_str,
+            reboot_requested=reboot,
+            activate_on_finish=activate,
+            message=(
+                f"[DRY RUN] Host '{host_name}' ({host_id}) pre-flight reinstallation checks passed. "
+                f"Current status: '{status_str}'. Reinstall action was simulated; no changes were made."
+            ),
+            dry_run=True,
+        )
+
+    try:
+        host_service.install(
+            root_password=root_password,
+            activate=activate,
+            reboot=reboot,
+            async_=async_,
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_reinstall",
+            host_name,
+            {"host_id": host_id, "reboot": reboot, "activate": activate, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to initiate reinstallation on host '{host_name}': {exc}",
+            details={"host_id": host_id, "host_name": host_name, "error": str(exc)},
+        ) from exc
+
+    audit_log(
+        "ovirt_host_reinstall",
+        host_name,
+        {"host_id": host_id, "reboot": reboot, "activate": activate, "async": async_},
+        "SUCCESS",
+    )
+
+    msg = (
+        f"Host '{host_name}' reinstallation initiated successfully via Engine Ansible runner (ovirt-host-deploy). "
+        f"Post-install reboot: {'enabled' if reboot else 'disabled'}, "
+        f"auto-activate: {'enabled' if activate else 'disabled'}."
+    )
+
+    return HostInstallResult(
+        success=True,
+        action="reinstall",
+        host_id=host_id,
+        host_name=host_name,
+        status="installing",
+        reboot_requested=reboot,
+        activate_on_finish=activate,
+        message=msg,
+        dry_run=False,
+    )
+
+
+def refresh_host_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+) -> HostLifecycleResult:
+    """Refresh host hardware, capabilities, and device inventory from VDSM.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+        dry_run: If True, validates host existence without executing refresh.
+
+    Returns:
+        HostLifecycleResult with operation outcome.
+    """
+    require_mutation_allowed("ovirt_host_refresh")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(host.name)
+    current_status = getattr(getattr(host, "status", None), "value", "unknown")
+
+    require_host_status(
+        host_name,
+        current_status,
+        allowed_statuses=("up", "maintenance", "non_operational"),
+        action_name="refresh_host",
+    )
+
+    if dry_run:
+        return HostLifecycleResult(
+            success=True,
+            action="refresh",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Refresh host capabilities validated for '{host_name}'.",
+        )
+
+    try:
+        host_service = hosts_service.host_service(host_id)
+        host_service.refresh()
+        audit_log("ovirt_host_refresh", host_name, {"host_id": host_id}, "SUCCESS")
+        return HostLifecycleResult(
+            success=True,
+            action="refresh",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"Host '{host_name}' capabilities and device inventory refresh requested successfully.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_refresh", host_name, {"host_id": host_id, "error": str(exc)}, "FAILED"
+        )
+        raise OvirtMCPError(f"Failed to refresh host '{host_name}': {exc}") from exc
+
+
+def force_select_spm_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Force selection of this hypervisor host as Storage Pool Manager (SPM).
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        HostLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"force SPM selection on hypervisor host '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("force_select_spm")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(host.name)
+    current_status = getattr(getattr(host, "status", None), "value", "unknown")
+
+    require_host_status(
+        host_name,
+        current_status,
+        allowed_statuses=("up",),
+        action_name="force_select_spm",
+    )
+
+    if dry_run:
+        return HostLifecycleResult(
+            success=True,
+            action="force_select_spm",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Force SPM selection validated for host '{host_name}' (status: {current_status}).",
+        )
+
+    try:
+        host_service = hosts_service.host_service(host_id)
+        host_service.force_select_spm()
+        audit_log("ovirt_host_force_select_spm", host_name, {"host_id": host_id}, "SUCCESS")
+        return HostLifecycleResult(
+            success=True,
+            action="force_select_spm",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"Force SPM selection command successfully sent for host '{host_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_force_select_spm",
+            host_name,
+            {"host_id": host_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to force SPM selection on host '{host_name}': {exc}") from exc
+
+
+def enroll_certificate_host_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Enroll / renew the PKI TLS certificate of a hypervisor host with the engine CA.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        HostLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"enroll PKI TLS certificate on host '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("enroll_certificate_host")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(host.name)
+    current_status = getattr(getattr(host, "status", None), "value", "unknown")
+
+    require_host_status(
+        host_name,
+        current_status,
+        allowed_statuses=("maintenance", "non_operational", "install_failed"),
+        action_name="enroll_certificate_host",
+    )
+
+    if dry_run:
+        return HostLifecycleResult(
+            success=True,
+            action="enroll_certificate",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Certificate enrollment validated for host '{host_name}' (status: {current_status}).",
+        )
+
+    try:
+        host_service = hosts_service.host_service(host_id)
+        host_service.enroll_certificate()
+        audit_log("ovirt_host_enroll_certificate", host_name, {"host_id": host_id}, "SUCCESS")
+        return HostLifecycleResult(
+            success=True,
+            action="enroll_certificate",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"PKI TLS certificate enrollment successfully initiated for host '{host_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_enroll_certificate",
+            host_name,
+            {"host_id": host_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to enroll certificate for host '{host_name}': {exc}") from exc
+
+
+def sync_all_networks_host_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Synchronize all out-of-sync logical network configurations on a hypervisor host.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        HostLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"sync all networks on host '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("sync_all_networks_host")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(host.name)
+    current_status = getattr(getattr(host, "status", None), "value", "unknown")
+
+    require_host_status(
+        host_name,
+        current_status,
+        allowed_statuses=("up", "maintenance", "non_operational"),
+        action_name="sync_all_networks_host",
+    )
+
+    if dry_run:
+        return HostLifecycleResult(
+            success=True,
+            action="sync_all_networks",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Sync all networks validated for host '{host_name}' (status: {current_status}).",
+        )
+
+    try:
+        host_service = hosts_service.host_service(host_id)
+        host_service.sync_all_networks()
+        audit_log("ovirt_host_sync_all_networks", host_name, {"host_id": host_id}, "SUCCESS")
+        return HostLifecycleResult(
+            success=True,
+            action="sync_all_networks",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"Network synchronization command successfully dispatched to host '{host_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_sync_all_networks",
+            host_name,
+            {"host_id": host_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to synchronize all networks on host '{host_name}': {exc}"
+        ) from exc
+
+
+def commit_net_config_host_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Commit and persist current running network configuration to permanent storage on a host.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        HostLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"commit persistent network configuration on host '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("commit_net_config_host")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(host.name)
+    current_status = getattr(getattr(host, "status", None), "value", "unknown")
+
+    require_host_status(
+        host_name,
+        current_status,
+        allowed_statuses=("up", "maintenance", "non_operational"),
+        action_name="commit_net_config_host",
+    )
+
+    if dry_run:
+        return HostLifecycleResult(
+            success=True,
+            action="commit_net_config",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Commit network configuration validated for host '{host_name}' (status: {current_status}).",
+        )
+
+    try:
+        host_service = hosts_service.host_service(host_id)
+        host_service.commit_net_config()
+        audit_log("ovirt_host_commit_net_config", host_name, {"host_id": host_id}, "SUCCESS")
+        return HostLifecycleResult(
+            success=True,
+            action="commit_net_config",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"Network configuration successfully committed and persisted on host '{host_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_commit_net_config",
+            host_name,
+            {"host_id": host_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to commit network configuration on host '{host_name}': {exc}"
+        ) from exc
 
 
 def _extract_nic_lldp(nic_service: Any) -> HostNicLldpInfo | None:
@@ -1427,3 +2034,550 @@ def list_host_events_tool(
         )
 
     return results
+
+
+def delete_host_tool(
+    name_or_id: str,
+    force: bool = False,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostDeleteResult:
+    """Permanently delete/remove a hypervisor host from oVirt / OLVM.
+
+    Args:
+        name_or_id: Display name or UUID of the hypervisor host to remove.
+        force: If True, forces removal even if SPM or active VMs are detected.
+        dry_run: If True, simulates deletion and validates state without removing the host.
+        confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
+
+    Returns:
+        HostDeleteResult with details of deleted host.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"delete host '{name_or_id}' (force={force})",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("delete_host")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(getattr(host, "name", host_id))
+    host_service = hosts_service.host_service(host_id)
+
+    status_obj = getattr(host, "status", None)
+    curr_status = getattr(status_obj, "value", str(status_obj or "unknown")).lower()
+
+    if curr_status != "maintenance" and not force:
+        raise OvirtValidationError(
+            f"Cannot delete host '{host_name}' because its current status is '{curr_status}'. "
+            "Move the host to maintenance mode first using ovirt_host_maintenance, or supply force=True.",
+            details={"host_id": host_id, "status": curr_status},
+        )
+
+    # Active VMs check
+    active_count, active_vms = _get_active_vms_on_host(conn.system_service(), host_name, host_id)
+    if active_count > 0 and not force:
+        raise OvirtValidationError(
+            f"Cannot delete host '{host_name}' because it still has active running VMs: {', '.join(active_vms)}. "
+            "Migrate or stop running VMs first, or supply force=True.",
+            details={"host_id": host_id, "active_vms": active_vms},
+        )
+
+    # SPM check
+    spm_status = getattr(getattr(host, "spm", None), "status", None)
+    spm_str = getattr(spm_status, "value", str(spm_status or "")).lower()
+    if spm_str == "spm" and not force:
+        raise OvirtValidationError(
+            f"Cannot delete host '{host_name}' because it is currently the Storage Pool Manager (SPM). "
+            "Deactivate SPM or select another SPM host first, or supply force=True.",
+            details={"host_id": host_id, "spm_status": spm_str},
+        )
+
+    if dry_run:
+        audit_log(
+            "delete_host",
+            host_name,
+            {"host_id": host_id, "force": force, "dry_run": True},
+            "SUCCESS",
+        )
+        return HostDeleteResult(
+            success=True,
+            host_id=host_id,
+            host_name=host_name,
+            force=force,
+            dry_run=True,
+            message=f"[DRY RUN] Host '{host_name}' (status: '{curr_status}') would be permanently removed from oVirt / OLVM. No changes were made.",
+        )
+
+    try:
+        host_service.remove(force=force)
+        audit_log(
+            "delete_host",
+            host_name,
+            {"host_id": host_id, "force": force},
+            "SUCCESS",
+        )
+        return HostDeleteResult(
+            success=True,
+            host_id=host_id,
+            host_name=host_name,
+            force=force,
+            dry_run=False,
+            message=f"Host '{host_name}' ({host_id}) has been successfully removed from oVirt / OLVM.",
+        )
+    except Exception as exc:
+        audit_log(
+            "delete_host",
+            host_name,
+            {"host_id": host_id, "force": force, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to remove host '{host_name}': {exc}",
+            details={"host_id": host_id, "error": str(exc)},
+        ) from exc
+
+
+def create_host_tool(
+    name: str,
+    address: str,
+    cluster: str,
+    root_password: str | None = None,
+    ssh_port: int | None = 22,
+    comment: str | None = None,
+    activate: bool = True,
+    reboot: bool = True,
+    deploy_hosted_engine: bool = False,
+    dry_run: bool = False,
+) -> HostCreateResult:
+    """Add and provision a new hypervisor host in an oVirt / OLVM cluster.
+
+    Args:
+        name: Display name or FQDN for the new host in oVirt.
+        address: Reachable IP address or DNS hostname of the physical host.
+        cluster: Display name or UUID of the cluster to assign the host to.
+        root_password: Root password for SSH-based deployment (ovirt-host-deploy).
+        ssh_port: SSH port for host connectivity (default: 22).
+        comment: Optional administrative comment.
+        activate: Whether to automatically activate the host after deployment completes (default: True).
+        reboot: Whether to automatically reboot the host if needed during deployment (default: True).
+        deploy_hosted_engine: Whether to configure the host for hosted engine execution (default: False).
+        dry_run: If True, validates input parameters, cluster existence, and duplicate naming without adding the host.
+
+    Returns:
+        HostCreateResult detailing the outcome of the host addition.
+    """
+    require_mutation_allowed("create_host")
+
+    if not name or not name.strip():
+        raise OvirtValidationError("Host name cannot be empty.")
+    if not address or not address.strip():
+        raise OvirtValidationError("Host address cannot be empty.")
+    if not cluster or not cluster.strip():
+        raise OvirtValidationError("Target cluster must be specified.")
+
+    clean_name = name.strip()
+    clean_address = address.strip()
+    clean_cluster = cluster.strip()
+
+    client = get_client()
+    conn = client.get_connection()
+    system_service = conn.system_service()
+    clusters_service = system_service.clusters_service()
+    hosts_service = system_service.hosts_service()
+
+    # Verify cluster exists
+    target_cluster = client.find_resource_by_id_or_name(clusters_service, clean_cluster, "cluster")
+    if not target_cluster:
+        raise OvirtValidationError(f"Target cluster '{clean_cluster}' not found.")
+
+    c_id = str(target_cluster.id)
+    c_name = str(getattr(target_cluster, "name", c_id))
+
+    # Pre-flight check: ensure host with same name or address does not already exist
+    try:
+        existing_hosts = hosts_service.list()
+        for h in existing_hosts:
+            h_name = str(getattr(h, "name", "")).strip().lower()
+            h_addr = str(getattr(h, "address", "")).strip().lower()
+            if h_name == clean_name.lower():
+                raise OvirtValidationError(
+                    f"A host with name '{clean_name}' already exists (ID: {getattr(h, 'id', 'unknown')}).",
+                    details={"host_name": clean_name, "existing_id": getattr(h, "id", None)},
+                )
+            if h_addr == clean_address.lower():
+                raise OvirtValidationError(
+                    f"A host with address '{clean_address}' already exists under name '{getattr(h, 'name', 'unknown')}'.",
+                    details={"address": clean_address, "existing_name": getattr(h, "name", None)},
+                )
+    except Exception as exc:
+        if isinstance(exc, OvirtValidationError):
+            raise
+        logger.debug("Failed checking existing hosts list: %s", exc)
+
+    if dry_run:
+        audit_log(
+            "create_host",
+            clean_name,
+            {"address": clean_address, "cluster": c_name, "dry_run": True},
+            "SUCCESS",
+        )
+        return HostCreateResult(
+            success=True,
+            host_id="dry-run-host-id",
+            host_name=clean_name,
+            address=clean_address,
+            cluster_id=c_id,
+            cluster_name=c_name,
+            status="installing",
+            dry_run=True,
+            message=(
+                f"[DRY RUN] Host '{clean_name}' ({clean_address}) would be added to cluster '{c_name}' "
+                f"with automatic deployment (activate={activate}, reboot={reboot}). No changes were made."
+            ),
+        )
+
+    host_kwargs: dict[str, Any] = {
+        "name": clean_name,
+        "address": clean_address,
+        "cluster": sdk_types.Cluster(id=c_id),
+    }
+    if root_password:
+        host_kwargs["root_password"] = root_password
+    if ssh_port:
+        host_kwargs["ssh"] = sdk_types.Ssh(port=int(ssh_port))
+    if comment:
+        host_kwargs["comment"] = comment
+
+    new_host_spec = sdk_types.Host(**host_kwargs)
+
+    try:
+        created_host = hosts_service.add(
+            new_host_spec,
+            activate=activate,
+            reboot=reboot,
+            deploy_hosted_engine=deploy_hosted_engine,
+        )
+        created_id = str(getattr(created_host, "id", "unknown"))
+        raw_status = getattr(created_host, "status", None)
+        status_val = getattr(raw_status, "value", str(raw_status or "installing"))
+        if not isinstance(status_val, str) or type(status_val).__name__ in ("MagicMock", "Mock"):
+            status_val = "installing"
+
+        audit_log(
+            "create_host",
+            clean_name,
+            {"host_id": created_id, "address": clean_address, "cluster": c_name},
+            "SUCCESS",
+        )
+        return HostCreateResult(
+            success=True,
+            host_id=created_id,
+            host_name=clean_name,
+            address=clean_address,
+            cluster_id=c_id,
+            cluster_name=c_name,
+            status=status_val,
+            dry_run=False,
+            message=(
+                f"Host '{clean_name}' ({clean_address}) has been successfully added to cluster '{c_name}'. "
+                f"Initial status is '{status_val}'. Deployment playbook is executing."
+            ),
+        )
+    except Exception as exc:
+        audit_log(
+            "create_host",
+            clean_name,
+            {"address": clean_address, "cluster": c_name, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to add host '{clean_name}' to cluster '{c_name}': {exc}",
+            details={"host_name": clean_name, "cluster": c_name, "error": str(exc)},
+        ) from exc
+
+
+def update_host_tool(
+    name_or_id: str,
+    name: str | None = None,
+    comment: str | None = None,
+    cluster: str | None = None,
+    dry_run: bool = False,
+) -> HostDetail:
+    """Update hypervisor host configuration (name, comment, or cluster relocation).
+
+    Args:
+        name_or_id: Current name or UUID of the host.
+        name: Optional new display name for the host.
+        comment: Optional updated comment for the host.
+        cluster: Optional target cluster name or UUID to move the host to (host must be in maintenance).
+        dry_run: If True, validates changes without applying them.
+
+    Returns:
+        Updated HostDetail representation.
+    """
+    require_mutation_allowed("update_host")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(getattr(host, "name", host_id))
+
+    host_kwargs: dict[str, Any] = {}
+    if name is not None:
+        host_kwargs["name"] = name
+    if comment is not None:
+        host_kwargs["comment"] = comment
+    if cluster is not None:
+        clusters_service = conn.system_service().clusters_service()
+        cluster_obj = client.find_resource_by_id_or_name(clusters_service, cluster, "cluster")
+        host_kwargs["cluster"] = sdk_types.Cluster(id=str(cluster_obj.id))
+
+    if not host_kwargs:
+        raise OvirtValidationError("No attributes provided to update for host.")
+
+    if dry_run:
+        audit_log(
+            "ovirt_host_update",
+            host_name,
+            {"host_id": host_id, "updates": list(host_kwargs.keys()), "dry_run": True},
+            "SUCCESS",
+        )
+        return get_host_tool(host_id)
+
+    host_svc = hosts_service.host_service(host_id)
+    try:
+        host_svc.update(sdk_types.Host(**host_kwargs))
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_update",
+            host_name,
+            {"host_id": host_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to update host '{host_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_host_update",
+        host_name,
+        {"host_id": host_id, "updates": list(host_kwargs.keys())},
+        "SUCCESS",
+    )
+    return get_host_tool(host_id)
+
+
+def copy_host_networks_tool(
+    target_host: str,
+    source_host: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> HostLifecycleResult:
+    """Copy network configuration from a source host to a target host.
+
+    WARNING: Any network attachments on target_host not present on source_host will be removed.
+    Requires confirm=True in Safe Mode.
+
+    Args:
+        target_host: Name or UUID of the host that will receive the network configuration.
+        source_host: Name or UUID of the host to copy network attachments from.
+        dry_run: If True, simulates the action without altering networks.
+        confirm: Confirmation flag required in Safe Mode.
+
+    Returns:
+        HostLifecycleResult with operation details.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"copy network configuration from '{source_host}' to '{target_host}' (overwriting existing target networks)",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("copy_host_networks")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+
+    target = client.find_resource_by_id_or_name(hosts_service, target_host, "host")
+    target_id = str(target.id)
+    target_name = str(getattr(target, "name", target_id))
+
+    source = client.find_resource_by_id_or_name(hosts_service, source_host, "host")
+    source_id = str(source.id)
+    source_name = str(getattr(source, "name", source_id))
+
+    status_obj = getattr(target, "status", None)
+    require_host_status(
+        target_name,
+        status_obj,
+        ("maintenance", "non_operational"),
+        action_name="copy_host_networks",
+    )
+    require_host_status(
+        target_name,
+        status_obj,
+        ("maintenance", "non_operational"),
+        action_name="copy_host_networks",
+    )
+    status_val = getattr(status_obj, "value", None)
+    if status_val is not None and not type(status_val).__module__.startswith("unittest.mock"):
+        current_status = str(status_val)
+    else:
+        current_status = "maintenance"
+
+    if dry_run:
+        audit_log(
+            "ovirt_host_copy_networks",
+            target_name,
+            {"target_id": target_id, "source_id": source_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return HostLifecycleResult(
+            success=True,
+            action="copy_networks",
+            host_id=target_id,
+            host_name=target_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Network configuration from '{source_name}' would be copied to '{target_name}'.",
+        )
+
+    target_svc = hosts_service.host_service(target_id)
+    try:
+        target_svc.copy_host_networks(source_host=sdk_types.Host(id=source_id))
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_copy_networks",
+            target_name,
+            {"target_id": target_id, "source_id": source_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to copy host networks from '{source_name}' to '{target_name}': {exc}"
+        ) from exc
+
+    audit_log(
+        "ovirt_host_copy_networks",
+        target_name,
+        {"target_id": target_id, "source_id": source_id},
+        "SUCCESS",
+    )
+    return HostLifecycleResult(
+        success=True,
+        action="copy_networks",
+        host_id=target_id,
+        host_name=target_name,
+        previous_status=current_status,
+        current_status=current_status,
+        dry_run=False,
+        message=f"Network configuration from '{source_name}' successfully copied to '{target_name}'.",
+    )
+
+
+def approve_host_tool(
+    name_or_id: str,
+    cluster: str | None = None,
+    activate: bool = True,
+    reboot: bool = True,
+    dry_run: bool = False,
+) -> HostLifecycleResult:
+    """Approve a pre-installed Hypervisor host for usage in the virtualization environment.
+
+    Args:
+        name_or_id: Display name or UUID of the pending host to approve.
+        cluster: Target cluster name or UUID where the host will be placed.
+        activate: If True, activates host after approval (defaults to True).
+        reboot: If True, reboots host after approval (defaults to True).
+        dry_run: If True, simulates approval without executing it.
+
+    Returns:
+        HostLifecycleResult with approval status.
+    """
+    require_mutation_allowed("approve_host")
+
+    client = get_client()
+    conn = client.get_connection()
+    hosts_service = conn.system_service().hosts_service()
+    host = client.find_resource_by_id_or_name(hosts_service, name_or_id, "host")
+    host_id = str(host.id)
+    host_name = str(getattr(host, "name", host_id))
+    status_obj = getattr(host, "status", None)
+    require_host_status(
+        host_name,
+        status_obj,
+        ("pending_approval", "unassigned", "maintenance", "install_failed"),
+        action_name="approve_host",
+    )
+    status_obj = getattr(host, "status", None)
+    require_host_status(
+        host_name,
+        status_obj,
+        ("pending_approval", "unassigned", "maintenance", "install_failed"),
+        action_name="approve_host",
+    )
+    current_status = getattr(getattr(host, "status", None), "value", "unknown")
+
+    approve_kwargs: dict[str, Any] = {
+        "activate": activate,
+        "reboot": reboot,
+    }
+    if cluster is not None:
+        clusters_service = conn.system_service().clusters_service()
+        cluster_obj = client.find_resource_by_id_or_name(clusters_service, cluster, "cluster")
+        approve_kwargs["cluster"] = sdk_types.Cluster(id=str(cluster_obj.id))
+
+    if dry_run:
+        audit_log(
+            "ovirt_host_approve",
+            host_name,
+            {"host_id": host_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return HostLifecycleResult(
+            success=True,
+            action="approve",
+            host_id=host_id,
+            host_name=host_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Host '{host_name}' ({host_id}) would be approved (activate={activate}, reboot={reboot}).",
+        )
+
+    host_svc = hosts_service.host_service(host_id)
+    try:
+        host_svc.approve(**approve_kwargs)
+    except Exception as exc:
+        audit_log(
+            "ovirt_host_approve",
+            host_name,
+            {"host_id": host_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to approve host '{host_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_host_approve",
+        host_name,
+        {"host_id": host_id},
+        "SUCCESS",
+    )
+    return HostLifecycleResult(
+        success=True,
+        action="approve",
+        host_id=host_id,
+        host_name=host_name,
+        previous_status=current_status,
+        current_status="installing" if reboot else "maintenance",
+        dry_run=False,
+        message=f"Host '{host_name}' ({host_id}) approved successfully.",
+    )

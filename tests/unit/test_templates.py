@@ -199,7 +199,7 @@ def test_create_template_vm_not_down_guard() -> None:
 
     with (
         patch("ovirt_mcp.tools.templates.get_client", return_value=mock_client),
-        pytest.raises(OvirtValidationError, match="VM is currently 'up'"),
+        pytest.raises(OvirtValidationError, match="Current status is 'up'"),
     ):
         create_template_from_vm_tool("source-vm", "NewTemplate")
 

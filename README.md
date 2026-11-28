@@ -16,13 +16,15 @@ Modern, production-grade Model Context Protocol (MCP) server for **Oracle Linux 
    - [Method B: Direct `mcp.json` (`env` Block - Zero `.env`)](#method-b-direct-mcpjson-env-block---zero-env)
    - [Configuration Options Breakdown](#configuration-options-breakdown)
    - [Authentication & AAA Profiles](#authentication--aaa-profiles-crucial)
-   - [Three-Tier Access & Safety Architecture](#three-tier-access--safety-architecture)
+   - [Four-Tier Access, Safety & Lifecycle Architecture](#four-tier-access-safety--lifecycle-architecture)
    - [Service Account Provisioning Best Practices](#service-account-provisioning-best-practices)
    - [TLS & SSL Certificate Management](#tls--ssl-certificate-management)
-5. [Operational Modes](#operational-modes)
+5. [Operational Modes & Safety Controls](#operational-modes--safety-controls)
    - [Compact vs. Detailed Mode (Token Optimization)](#compact-vs-detailed-mode-token-optimization)
    - [Safe Mode & Mutation Confirmation (Tier 3)](#safe-mode--mutation-confirmation-tier-3)
    - [Read-Only Enforcement (Tier 2)](#read-only-enforcement-tier-2)
+   - [Pre-flight Status Guards & Lifecycle State Machine Safety (Tier 4)](#pre-flight-status-guards--lifecycle-state-machine-safety-tier-4)
+   - [Asynchronous Job Orchestration Best Practices](#asynchronous-job-orchestration-best-practices)
    - [Hierarchical Naming Convention](#hierarchical-naming-convention)
 6. [Tool Catalog & Overview](#tool-catalog--overview)
    - [Complete Tool Catalog (TOOLS.md)](TOOLS.md)
@@ -133,7 +135,7 @@ The pre-flight diagnostic verifies:
 1. `.env` and system environment variable loading.
 2. Engine REST API reachability and TLS/SSL certificate handshake.
 3. AAA user authentication and session negotiation.
-4. Engine version compatibility and reports the count of successfully registered MCP tools (137 tools).
+4. Engine version compatibility and reports the count of successfully registered MCP tools (186 tools).
 
 ---
 
@@ -250,9 +252,9 @@ oVirt and OLVM use an internal authentication provider that requires the profile
 
 ---
 
-### Three-Tier Access & Safety Architecture
+### Four-Tier Access, Safety & Lifecycle Architecture
 
-To avoid security pitfalls and clarify how permissions interact between the oVirt/OLVM hypervisor and the MCP server, `ovirt-mcp` implements a strict **Three-Tier Security Architecture**:
+To avoid security pitfalls and clarify how permissions and safety gates interact between the oVirt/OLVM hypervisor and the MCP server, `ovirt-mcp` implements a strict **Four-Tier Security & Lifecycle Architecture**:
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -271,6 +273,13 @@ To avoid security pitfalls and clarify how permissions interact between the oVir
 │  Tier 3: Safe Mode Gate & Confirmation (MCP_SAFE_MODE + confirm=True)  │
 │  • true (default): Mutating/destructive actions require confirm=True.  │
 │  • If confirm=False/missing: Operation is safely rejected with prompt. │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+┌───────────────────────────────────▼────────────────────────────────────┐
+│  Tier 4: Pre-flight Status Guards & Lifecycle State Machine Gate       │
+│  • Validates resource operational state (VM, Host, Disk, Storage, etc) │
+│  • Blocks invalid & transitional states (image_locked, saving_state).  │
+│  • Rejects early (<5ms) with clear human/AI remediation guidance.      │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -365,7 +374,7 @@ For operational, lifecycle, storage, and template tools, agents can pass `dry_ru
   - **VM Snapshots:** `ovirt_vm_snapshot_create`, `ovirt_vm_snapshot_restore`, `ovirt_vm_snapshot_delete`.
   - **Virtual Disks:** `ovirt_disk_resize`, `ovirt_disk_move`, `ovirt_disk_sparsify`.
   - **Templates:** `ovirt_template_create_from_vm`, `ovirt_template_delete`.
-  - **Hypervisor Hosts:** `ovirt_host_maintenance`, `ovirt_host_activate`, `ovirt_host_restart`.
+  - **Hypervisor Hosts:** `ovirt_host_maintenance`, `ovirt_host_activate`, `ovirt_host_restart`, `ovirt_host_reinstall`.
 - **Pre-flight Validation:** Verifies host states, cluster constraints, pinned VMs, IPMI fencing configuration, and storage domain requirements.
 - **Bypasses Safe Mode Prompt:** Allows autonomous agents to preview projected outcomes without triggering destructive confirmation gates.
 - **Zero State Impact:** No changes are applied to the hypervisor cluster; returns `dry_run=True` with a detailed outcome description.
@@ -383,6 +392,31 @@ When `MCP_READ_ONLY=true` is set:
 - Any action that attempts to modify engine state (stopping VMs, reboots, disk manipulation, quota creation, etc.) is rejected immediately with `OvirtPermissionError: Operation prohibited: Server is operating in read-only mode (MCP_READ_ONLY=true)`.
 - Rejections occur locally in the MCP process without transmitting any mutating API request to the hypervisor engine.
 
+### Pre-flight Status Guards & Lifecycle State Machine Safety (Tier 4)
+
+In the oVirt/OLVM WebAdmin GUI, buttons are **constantly greyed out and disabled** when an action is illegal for the entity's current state (e.g. *Enroll Certificate* on a running host, *Create Template* or *Restore Snapshot* on an active VM, *Console Ticket* on a powered-off VM).
+
+The oVirt REST API does **not** grey out operations. Calling an invalid action results in cryptic HTTP 409 Conflict errors or engine race conditions.
+
+To eliminate this vulnerability, `ovirt-mcp` implements centralized **Pre-flight Status Guards** across all 186 tools:
+- **Instant Local Rejection (<5ms):** Inspects the target's operational state (`Host`, `VM`, `Disk`, `Storage Domain`, `Template`, `Snapshot`) before making mutating engine calls.
+- **Transitional State Protection:** Strictly blocks actions while entities are in transitional states (`saving_state`, `image_locked`, `preparing_for_maintenance`, `reboot`, `restoring_state`).
+- **Human- & AI-Readable Remediation:** Standardizes errors into clear guidance explaining *why* the operation was blocked, what status is required, and what prerequisite action must be performed first.
+
+> [!NOTE]
+> For complete lifecycle state machines, Mermaid flowcharts, and the detailed troubleshooting/remediation guide, read **[docs/STATUS_GUARDS.md](docs/STATUS_GUARDS.md)**.
+
+### Asynchronous Job Orchestration Best Practices
+
+Certain operations in oVirt/OLVM (e.g., volume formatting, disk moving, snapshot creation/deletion, host activation, or template unlinking) execute **asynchronously** in the engine background.
+
+When an AI agent or script orchestrates multi-step lifecycle tasks (such as detaching a storage domain and immediately deleting the associated cluster), the second call may fail with HTTP 409 Conflict if the engine has not finished deregistering background references (e.g. the default Blank template).
+
+#### Recommended Orchestration Pattern:
+1. **Initiate the Action:** Invoke the mutating tool (e.g. `ovirt_vm_snapshot_create`, `ovirt_storage_domain_maintenance`).
+2. **Track Engine Progress:** Use `ovirt_job_list` and `ovirt_job_get` to monitor active background tasks and ensure `status == "finished"`.
+3. **Status Polling / Backoff:** Allow 5–15 seconds for background tasks before executing dependent teardown operations (such as cluster or storage domain deletion).
+
 ### Hierarchical Naming Convention
 
 To ensure clarity for both AI Agents and human operators, all tools adhere to a strict domain-namespaced naming convention:
@@ -393,7 +427,7 @@ ovirt_<domain>_[<subresource>_]<action>
 
 - **`ovirt_vm_*`**: All operations affecting virtual machines (lifecycle, snapshots, disks, media/ISO, migration, guest agent).
   - e.g. `ovirt_vm_list`, `ovirt_vm_start`, `ovirt_vm_stop`, `ovirt_vm_snapshot_create`, `ovirt_vm_disk_attach`, `ovirt_vm_migrate`.
-- **`ovirt_host_*`**: Hypervisor host operations (`list`, `get`, `activate`, `maintenance`, `restart`, `stats`, `upgrade_check`, `upgrade`, `nic_list`, `numa_list`, `device_list`, `storage_list`, `events`).
+- **`ovirt_host_*`**: Hypervisor host operations (`list`, `get`, `activate`, `maintenance`, `restart`, `reinstall`, `stats`, `upgrade_check`, `upgrade`, `nic_list`, `numa_list`, `device_list`, `storage_list`, `events`).
 - **`ovirt_cluster_*`**: Cluster topology, compatibility versions, and CPU profiles.
 - **`ovirt_storage_*`**: Storage domains and capacity management.
 - **`ovirt_disk_*`**: Standalone floating disks and volume operations.
@@ -407,17 +441,18 @@ ovirt_<domain>_[<subresource>_]<action>
 
 ## Tool Catalog & Overview
 
-The server exposes **137 production-grade tools** structured into 17 logical resource domains, strictly adhering to the `ovirt_<domain>_[<subresource>_]<action>` naming pattern.
+The server exposes **186 production-grade tools** structured into 18 logical resource domains, strictly adhering to the `ovirt_<domain>_[<subresource>_]<action>` naming pattern.
 
 > 📘 **Exhaustive Documentation:** For the complete, parameter-by-parameter reference catalog, input/output schemas, safe mode constraints, and JSON response examples for every tool, see **[TOOLS.md](TOOLS.md)**.
+> 📊 **SDK Parity Matrix:** For comprehensive mapping of official `ovirtsdk4` Python SDK attributes and services vs MCP coverage, see **[SDK_COVERAGE.md](SDK_COVERAGE.md)** (or run `ovirt-mcp --audit`).
 
 ### Resource Domains Summary
 
 | # | Resource Domain | Tool Prefix | Tools Count | Scope & Primary Operations | Reference Link |
 |---|-----------------|-------------|:-----------:|----------------------------|----------------|
 | 1 | **Testing & Connectivity** | `ovirt_test_connection` | 1 | Engine connectivity validation, version & build metadata | [TOOLS.md#1](TOOLS.md#1-ovirt_test_connection) |
-| 2 | **Virtual Machines & Compute** | `ovirt_vm_*` | 22 | VM inventory, lifecycle, live migration, CPU/NUMA pinning, snapshots, CD-ROM/ISO, graphics consoles, SPICE/VNC tickets, and real-time runtime telemetry | [TOOLS.md#2](TOOLS.md#2-ovirt_vm_list) |
-| 3 | **Virtual Disks & ISO Media** | `ovirt_disk_*`, `ovirt_storage_iso_*` | 9 | Floating & attached virtual disk lifecycle, attachment, resizing, moving, copying, sparsify (TRIM), and ISO storage querying | [TOOLS.md#3](TOOLS.md#24-ovirt_storage_iso_list) |
+| 2 | **Virtual Machines & Compute** | `ovirt_vm_*` | 22 | VM inventory, lifecycle, CPU/NUMA pinning, snapshots, CD-ROM/ISO, graphics consoles, SPICE/VNC tickets, and real-time runtime telemetry | [TOOLS.md#2](TOOLS.md#2-ovirt_vm_list) |
+| 3 | **Virtual Disks & ISO Media** | `ovirt_disk_*`, `ovirt_storage_iso_*` | 8 | Floating & attached virtual disk lifecycle, attachment, resizing, moving, copying, sparsify (TRIM), and ISO storage querying | [TOOLS.md#3](TOOLS.md#24-ovirt_storage_iso_list) |
 | 4 | **Hypervisors & Hosts** | `ovirt_host_*` | 13 | Hypervisor node inventory, hardware metrics, CPU/memory stats, maintenance mode, host activation, power restart, host upgrades, NUMA nodes, physical NICs, devices, and storage connections | [TOOLS.md#4](TOOLS.md#41-ovirt_host_list) |
 | 5 | **Affinity & Placement** | `ovirt_affinity_*`, `ovirt_cluster_affinity_*`, `ovirt_*_label_*` | 14 | Host & VM affinity labels, cluster affinity groups (positive/negative VM-VM and VM-Host rules, enforcing/soft policies), and entity label assignments | [TOOLS.md#5](TOOLS.md#54-ovirt_affinity_label_list) |
 | 6 | **Host Networking & SAN** | `ovirt_host_network_*`, `ovirt_host_iscsi_*`, `ovirt_host_bond_*` | 6 | Host network attachments, network sync, iSCSI portal discovery and login, and bond interface configuration | [TOOLS.md#6](TOOLS.md#68-ovirt_host_network_attachment_list) |
@@ -432,7 +467,8 @@ The server exposes **137 production-grade tools** structured into 17 logical res
 | 15 | **Virtual Machine Pools** | `ovirt_vm_pool_*` | 6 | Stateful & stateless VDI desktop pools, pool creation, parameter updates, allocation, and deletion | [TOOLS.md#15](TOOLS.md#122-ovirt_vm_pool_list) |
 | 16 | **Backup & Incremental CBT** | `ovirt_vm_checkpoint_*`, `ovirt_vm_backup_*` | 7 | Changed Block Tracking (CBT) checkpoint management, live backup sessions, scratch disk overlays, and backup finalization | [TOOLS.md#16](TOOLS.md#128-ovirt_vm_checkpoint_list) |
 | 17 | **Asynchronous Jobs & Progress** | `ovirt_job_*` | 2 | Real-time monitoring of asynchronous engine operations, execution sub-steps, progress percentages (0-100%), and execution host mapping | [TOOLS.md#17](TOOLS.md#135-ovirt_job_list) |
-| **Total** | | | **137** | **Full-Stack Enterprise Virtualization Operations** | **[Complete Catalog](TOOLS.md)** |
+| 18 | **Operational Parity & Maintenance** | Multiple | 49 | Host provisioning/reinstallation/deletion, VM live migration cancel/suspend/reset/freeze/thaw/auto-pin/clone, snapshot-to-VM cloning, Cloud-Init & Sysprep guest initialization, watchdogs, host PCI devices, host network copying & approval, cluster rolling upgrade, storage domain disaster recovery VM registration, storage domain OVF sync/LUN refresh/reduce/update, virtual disk get/delete/reduce/convert/LUN refresh, cluster create/delete/network sync/emulated machine reset, datacenter create/delete/task cleanup, and template export/update | [TOOLS.md#18](TOOLS.md#138-ovirt_host_reinstall) |
+| **Total** | | | **186** | **Full-Stack Enterprise Virtualization Operations** | **[Complete Catalog](TOOLS.md)** |
 
 ---
 
@@ -514,7 +550,7 @@ Add the `ovirt` server configuration (using either `ghcr.io/gerilab/ovirt-mcp:la
   }
 }
 ```
-Restart Claude Desktop. The hammer icon will show all 137 oVirt tools loaded!
+Restart Claude Desktop. The hammer icon will show all 186 oVirt tools loaded!
 
 ---
 
@@ -817,7 +853,7 @@ This is the standard enterprise architecture: your local developer workstation (
 
 #### Why Use a Remote SSH Jumpbox?
 
-In production environments, the oVirt/OLVM engine API (e.g. `https://olvm-engine.example.com/ovirt-engine/api`) resides on an **isolated management network / VLAN** (e.g., `10.0.10.0/24`). Developer workstations usually cannot—and for security reasons *should not*—directly route into hypervisor management interfaces.
+In production environments, the oVirt/OLVM engine API (e.g. `https://olvm-engine.example.com/ovirt-engine/api`) resides on an **isolated management network / VLAN** (e.g., `198.51.100.0/24`). Developer workstations usually cannot—and for security reasons *should not*—directly route into hypervisor management interfaces.
 
 A Linux jumpbox or CI/CD runner sits directly inside the management network with access to the engine API. Connecting via SSH allows developers to run AI coding assistants seamlessly while keeping all network traffic strictly within the protected hypervisor zone.
 
@@ -842,7 +878,7 @@ On your local workstation, add the jumpbox to your SSH configuration file (`~/.s
 
 ```ssh
 Host olvm-jumpbox
-    HostName 10.0.10.25
+    HostName jumpbox.example.com
     User devops
     IdentityFile ~/.ssh/id_ed25519
     ServerAliveInterval 60
@@ -961,7 +997,7 @@ If your extension manages MCP servers via its own JSON file (e.g. `cline_mcp_set
 
 #### Step 6: Verify in Remote VS Code
 
-1. In the Cline or Roo Code MCP panel on the remote host, check that the `ovirt` server has a green status indicator and reports all 137 tools.
+1. In the Cline or Roo Code MCP panel on the remote host, check that the `ovirt` server has a green status indicator and reports all 186 tools.
 2. In the AI chat, submit a test prompt:
    ```text
    Test hypervisor connection using ovirt_test_connection, then list the first 5 VMs with ovirt_vm_list.
@@ -978,7 +1014,7 @@ If your extension manages MCP servers via its own JSON file (e.g. `cline_mcp_set
 Just like with VS Code Remote - SSH, when Kiro IDE connects to a remote Linux jumpbox:
 - The Kiro UI client runs on your local machine.
 - Kiro's background agent runner and MCP server processes execute **remotely** on the jumpbox.
-- All 137 `ovirt-mcp` tools run natively in the remote Linux virtualenv with direct access to internal OLVM/oVirt management subnets.
+- All 186 `ovirt-mcp` tools run natively in the remote Linux virtualenv with direct access to internal OLVM/oVirt management subnets.
 
 #### Step 1: Connect to Remote Linux Host in Kiro
 
@@ -1056,7 +1092,7 @@ If you want `ovirt-mcp` to be available across all workspaces on your remote Lin
 
 #### Step 4: Verification and Live Interaction in Kiro
 
-1. In Kiro's MCP panel, verify that `ovirt` shows **Connected** with 137 tools available.
+1. In Kiro's MCP panel, verify that `ovirt` shows **Connected** with 186 tools available.
 2. Open the Kiro Agent chat panel and try the following real-world virtualization workflows:
 
 ##### Diagnostic Query:

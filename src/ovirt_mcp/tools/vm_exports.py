@@ -12,6 +12,8 @@ from ovirt_mcp.models.disk import DiskOperationResult
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
+    require_disk_status,
+    require_vm_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,7 @@ def export_vm_tool(
     vm = client.find_resource_by_id_or_name(vms_service, vm_name_or_id, "vm")
     vm_id = str(vm.id)
     vm_name = str(getattr(vm, "name", vm_id))
+    require_vm_status(vm_name, getattr(vm, "status", None), ("down",), action_name="export_vm")
     vm_service = vms_service.vm_service(vm_id)
 
     try:
@@ -246,6 +249,9 @@ def export_disk_tool(
     sd = client.find_resource_by_id_or_name(sds_service, storage_domain, "storage_domain")
     sd_id = str(sd.id)
     sd_name = str(getattr(sd, "name", sd_id))
+    require_disk_status(
+        disk_name, getattr(disk, "status", None), ("ok",), action_name="export_disk"
+    )
 
     try:
         disk_service = disks_service.disk_service(disk_id)

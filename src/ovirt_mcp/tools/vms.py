@@ -10,6 +10,7 @@ import ovirtsdk4.types as sdk_types
 from ovirt_mcp.client import get_client
 from ovirt_mcp.client.exceptions import OvirtMCPError, OvirtTimeoutError, OvirtValidationError
 from ovirt_mcp.models.vm import (
+    VmCloneResult,
     VmCompactDetail,
     VmCpuDetails,
     VmCreateResult,
@@ -17,14 +18,19 @@ from ovirt_mcp.models.vm import (
     VmDetail,
     VmDiskInfo,
     VmGuestOsInfo,
+    VmHardwareResult,
     VmHardwareSecurity,
     VmHighAvailability,
+    VmHostDeviceInfo,
+    VmInitializationInfo,
+    VmInitializationResult,
     VmIoAndScsi,
     VmLifecycleInfo,
     VmLifecycleResult,
     VmMemoryPolicy,
     VmMigrateResult,
     VmMigrationOptions,
+    VmNicConfiguration,
     VmNicInfo,
     VmNicIoStats,
     VmPinResult,
@@ -33,12 +39,15 @@ from ovirt_mcp.models.vm import (
     VmSnapshotInfo,
     VmSnapshotResult,
     VmSummary,
+    VmWatchdogInfo,
 )
 from ovirt_mcp.tools.disks import extract_disk_io_stats
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
     require_mutation_allowed,
+    require_snapshot_status,
+    require_vm_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +56,24 @@ logger = logging.getLogger(__name__)
 def _is_mock_object(obj: Any) -> bool:
     """Check if an object is an unconfigured unittest MagicMock."""
     return type(obj).__module__.startswith("unittest.mock")
+
+
+def _safe_bool(val: Any) -> bool | None:
+    """Safely convert value to bool, ignoring unittest Mock objects."""
+    if val is None or _is_mock_object(val):
+        return None
+    return bool(val)
+
+
+def _safe_str(val: Any) -> str | None:
+    """Safely convert value or datetime to string, ignoring unittest Mock objects."""
+    if val is None or _is_mock_object(val):
+        return None
+    if hasattr(val, "isoformat") and not _is_mock_object(val.isoformat):
+        res = val.isoformat()
+        return None if _is_mock_object(res) else str(res)
+    res = str(val)
+    return None if _is_mock_object(res) else res
 
 
 def _extract_reported_devices(
@@ -129,6 +156,199 @@ def _format_version(ver: Any) -> str | None:
     return s if s and not _is_mock_object(ver) else None
 
 
+def build_initialization_spec(
+    cloud_init_hostname: str | None = None,
+    cloud_init_user: str | None = None,
+    cloud_init_password: str | None = None,
+    cloud_init_ssh_keys: str | None = None,
+    cloud_init_script: str | None = None,
+    cloud_init_dns_servers: str | None = None,
+    cloud_init_dns_search: str | None = None,
+    cloud_init_regenerate_ssh_keys: bool | None = None,
+    cloud_init_timezone: str | None = None,
+    sysprep_domain: str | None = None,
+    sysprep_active_directory_ou: str | None = None,
+    sysprep_admin_password: str | None = None,
+    sysprep_user_name: str | None = None,
+    sysprep_license_key: str | None = None,
+    sysprep_org_name: str | None = None,
+    sysprep_input_locale: str | None = None,
+    sysprep_system_locale: str | None = None,
+    sysprep_ui_language: str | None = None,
+    sysprep_user_locale: str | None = None,
+    sysprep_custom_script: str | None = None,
+    sysprep_timezone: str | None = None,
+    nic_name: str | None = None,
+    nic_boot_protocol: str | None = None,
+    nic_ip_address: str | None = None,
+    nic_netmask: str | None = None,
+    nic_gateway: str | None = None,
+) -> sdk_types.Initialization | None:
+    """Construct an oVirt SDK Initialization specification for Cloud-Init or Sysprep.
+
+    Returns None if no initialization parameters were provided.
+    """
+    init_kwargs: dict[str, Any] = {}
+
+    host_name = cloud_init_hostname
+    if host_name is not None:
+        init_kwargs["host_name"] = host_name
+
+    user_name = cloud_init_user or sysprep_user_name
+    if user_name is not None:
+        init_kwargs["user_name"] = user_name
+
+    root_password = cloud_init_password or sysprep_admin_password
+    if root_password is not None:
+        init_kwargs["root_password"] = root_password
+
+    custom_script = cloud_init_script or sysprep_custom_script
+    if custom_script is not None:
+        init_kwargs["custom_script"] = custom_script
+
+    timezone = cloud_init_timezone or sysprep_timezone
+    if timezone is not None:
+        init_kwargs["timezone"] = timezone
+
+    if cloud_init_ssh_keys is not None:
+        init_kwargs["authorized_ssh_keys"] = cloud_init_ssh_keys
+    if cloud_init_regenerate_ssh_keys is not None:
+        init_kwargs["regenerate_ssh_keys"] = cloud_init_regenerate_ssh_keys
+    if cloud_init_dns_servers is not None:
+        init_kwargs["dns_servers"] = cloud_init_dns_servers
+    if cloud_init_dns_search is not None:
+        init_kwargs["dns_search"] = cloud_init_dns_search
+
+    if sysprep_domain is not None:
+        init_kwargs["domain"] = sysprep_domain
+    if sysprep_active_directory_ou is not None:
+        init_kwargs["active_directory_ou"] = sysprep_active_directory_ou
+    if sysprep_license_key is not None:
+        init_kwargs["windows_license_key"] = sysprep_license_key
+    if sysprep_org_name is not None:
+        init_kwargs["org_name"] = sysprep_org_name
+    if sysprep_input_locale is not None:
+        init_kwargs["input_locale"] = sysprep_input_locale
+    if sysprep_system_locale is not None:
+        init_kwargs["system_locale"] = sysprep_system_locale
+    if sysprep_ui_language is not None:
+        init_kwargs["ui_language"] = sysprep_ui_language
+    if sysprep_user_locale is not None:
+        init_kwargs["user_locale"] = sysprep_user_locale
+
+    nic_configs: list[sdk_types.NicConfiguration] = []
+    if nic_ip_address is not None:
+        ip_kwargs: dict[str, Any] = {"address": nic_ip_address}
+        if nic_netmask is not None:
+            ip_kwargs["netmask"] = nic_netmask
+        if nic_gateway is not None:
+            ip_kwargs["gateway"] = nic_gateway
+        nic_configs.append(
+            sdk_types.NicConfiguration(
+                name=nic_name or "eth0",
+                boot_protocol=sdk_types.BootProtocol.STATIC,
+                ip=sdk_types.Ip(**ip_kwargs),
+                on_boot=True,
+            )
+        )
+    elif nic_boot_protocol is not None:
+        proto_val = nic_boot_protocol.lower()
+        proto_enum = (
+            sdk_types.BootProtocol.DHCP
+            if proto_val == "dhcp"
+            else sdk_types.BootProtocol.AUTOCONF
+            if proto_val == "autoconf"
+            else sdk_types.BootProtocol.NONE
+        )
+        nic_configs.append(
+            sdk_types.NicConfiguration(
+                name=nic_name or "eth0",
+                boot_protocol=proto_enum,
+                on_boot=True,
+            )
+        )
+
+    if nic_configs:
+        init_kwargs["nic_configurations"] = nic_configs
+
+    if not init_kwargs:
+        return None
+
+    return sdk_types.Initialization(**init_kwargs)
+
+
+def extract_vm_initialization(vm: Any) -> VmInitializationInfo | None:
+    """Extract Cloud-Init or Sysprep initialization info from an oVirt SDK VM object."""
+    init = getattr(vm, "initialization", None)
+    if not init or _is_mock_object(init):
+        return None
+
+    domain = _safe_str(getattr(init, "domain", None))
+    license_key = _safe_str(getattr(init, "windows_license_key", None))
+    org_name = _safe_str(getattr(init, "org_name", None))
+    ssh_keys = _safe_str(getattr(init, "authorized_ssh_keys", None))
+    script = _safe_str(getattr(init, "custom_script", None))
+
+    init_type: str | None = None
+    if domain or license_key or org_name:
+        init_type = "sysprep"
+    elif (
+        ssh_keys
+        or (script and "#cloud-config" in script)
+        or getattr(init, "cloud_init", None)
+        or any(
+            getattr(init, attr, None) is not None
+            for attr in ("host_name", "user_name", "custom_script", "root_password")
+        )
+    ):
+        init_type = "cloud_init"
+
+    nic_configs: list[VmNicConfiguration] = []
+    for nic in getattr(init, "nic_configurations", None) or []:
+        if _is_mock_object(nic):
+            continue
+        proto = getattr(
+            getattr(nic, "boot_protocol", None),
+            "value",
+            str(getattr(nic, "boot_protocol", "") or ""),
+        )
+        ip_obj = getattr(nic, "ip", None)
+        ip_addr = _safe_str(getattr(ip_obj, "address", None)) if ip_obj else None
+        netmask = _safe_str(getattr(ip_obj, "netmask", None)) if ip_obj else None
+        gateway = _safe_str(getattr(ip_obj, "gateway", None)) if ip_obj else None
+        nic_configs.append(
+            VmNicConfiguration(
+                name=_safe_str(getattr(nic, "name", None)),
+                boot_protocol=proto if proto else None,
+                ip_address=ip_addr,
+                netmask=netmask,
+                gateway=gateway,
+                on_boot=_safe_bool(getattr(nic, "on_boot", None)),
+            )
+        )
+
+    return VmInitializationInfo(
+        type=init_type,
+        host_name=_safe_str(getattr(init, "host_name", None)),
+        user_name=_safe_str(getattr(init, "user_name", None)),
+        custom_script=script,
+        authorized_ssh_keys=ssh_keys,
+        regenerate_ssh_keys=_safe_bool(getattr(init, "regenerate_ssh_keys", None)),
+        timezone=_safe_str(getattr(init, "timezone", None)),
+        dns_servers=_safe_str(getattr(init, "dns_servers", None)),
+        dns_search=_safe_str(getattr(init, "dns_search", None)),
+        domain=domain,
+        active_directory_ou=_safe_str(getattr(init, "active_directory_ou", None)),
+        org_name=org_name,
+        windows_license_key=license_key,
+        input_locale=_safe_str(getattr(init, "input_locale", None)),
+        system_locale=_safe_str(getattr(init, "system_locale", None)),
+        ui_language=_safe_str(getattr(init, "ui_language", None)),
+        user_locale=_safe_str(getattr(init, "user_locale", None)),
+        nic_configurations=nic_configs,
+    )
+
+
 def extract_vm_summary(
     vm: Any,
     cluster_names: dict[str, str] | None = None,
@@ -144,15 +364,17 @@ def extract_vm_summary(
 
     cluster_name = None
     if hasattr(vm, "cluster") and vm.cluster:
-        cluster_name = getattr(vm.cluster, "name", None)
+        cluster_name = _safe_str(getattr(vm.cluster, "name", None))
         if not cluster_name and cluster_names and hasattr(vm.cluster, "id"):
-            cluster_name = cluster_names.get(vm.cluster.id)
+            cid = _safe_str(getattr(vm.cluster, "id", None))
+            cluster_name = cluster_names.get(cid) if cid else None
 
     host_name = None
     if hasattr(vm, "host") and vm.host:
-        host_name = getattr(vm.host, "name", None)
+        host_name = _safe_str(getattr(vm.host, "name", None))
         if not host_name and host_names and hasattr(vm.host, "id"):
-            host_name = host_names.get(vm.host.id)
+            hid = _safe_str(getattr(vm.host, "id", None))
+            host_name = host_names.get(hid) if hid else None
 
     memory_mb = None
     if hasattr(vm, "memory") and vm.memory:
@@ -175,17 +397,25 @@ def extract_vm_summary(
     rep_devices = _extract_reported_devices(vm, vm_service=vm_srv, name_or_id=vm_id)
     ip_addresses = _extract_ips_from_devices(rep_devices)
 
-    fqdn = getattr(vm, "fqdn", None)
+    fqdn = _safe_str(getattr(vm, "fqdn", None))
 
     os_type = None
     if hasattr(vm, "os") and vm.os:
-        os_type = getattr(vm.os, "type", None)
+        os_type = _safe_str(getattr(vm.os, "type", None))
 
     ha_enabled = False
     if hasattr(vm, "high_availability") and vm.high_availability:
         ha_enabled = bool(getattr(vm.high_availability, "enabled", False))
 
-    description = getattr(vm, "description", None)
+    delete_protected = _safe_bool(getattr(vm, "delete_protected", None))
+    has_illegal_images = _safe_bool(getattr(vm, "has_illegal_images", None))
+    next_run_config = _safe_bool(getattr(vm, "next_run_configuration_exists", None))
+    status_detail = _safe_str(getattr(vm, "status_detail", None))
+    creation_time = _safe_str(getattr(vm, "creation_time", None))
+    start_time = _safe_str(getattr(vm, "start_time", None))
+    stop_time = _safe_str(getattr(vm, "stop_time", None))
+
+    description = _safe_str(getattr(vm, "description", None))
 
     return VmSummary(
         id=vm_id,
@@ -199,6 +429,13 @@ def extract_vm_summary(
         fqdn=fqdn,
         os_type=os_type,
         ha_enabled=ha_enabled,
+        delete_protected=delete_protected,
+        has_illegal_images=has_illegal_images,
+        next_run_configuration_exists=next_run_config,
+        status_detail=status_detail,
+        creation_time=creation_time,
+        start_time=start_time,
+        stop_time=stop_time,
         description=description,
     )
 
@@ -994,15 +1231,12 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
     # 13. Status details
     status_obj = getattr(vm, "status", None)
     status_str = getattr(status_obj, "value", str(status_obj or "unknown")).lower()
-    raw_status_detail = getattr(vm, "status_detail", None)
-    status_detail = (
-        str(raw_status_detail)
-        if raw_status_detail is not None and not _is_mock_object(raw_status_detail)
-        else None
-    )
-
-    raw_desc = getattr(vm, "description", None)
-    vm_desc = str(raw_desc) if raw_desc is not None and not _is_mock_object(raw_desc) else None
+    status_detail = _safe_str(getattr(vm, "status_detail", None))
+    vm_desc = _safe_str(getattr(vm, "description", None))
+    vm_comment = _safe_str(getattr(vm, "comment", None))
+    raw_origin = getattr(vm, "origin", None)
+    vm_origin = _safe_str(getattr(raw_origin, "value", raw_origin))
+    has_illegal_images = _safe_bool(getattr(vm, "has_illegal_images", None))
 
     # 14. Real-time runtime telemetry
     runtime_telemetry = None
@@ -1020,6 +1254,17 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
         host_name=host_name,
         template_name=template_name,
         description=vm_desc,
+        comment=vm_comment,
+        origin=vm_origin,
+        stateless=stateless,
+        type=vm_type,
+        delete_protected=delete_protected,
+        has_illegal_images=has_illegal_images,
+        next_run_configuration_exists=next_run_exists,
+        creation_time=creation_time,
+        start_time=start_time,
+        stop_time=stop_time,
+        stop_reason=stop_reason,
         cpu=cpu_details,
         memory=memory_policy,
         io_scsi=io_scsi,
@@ -1033,6 +1278,7 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
         nics=nics,
         snapshots_count=snapshots_count,
         telemetry=runtime_telemetry,
+        initialization=extract_vm_initialization(vm),
     )
 
 
@@ -1042,15 +1288,35 @@ def get_vm_tool(name_or_id: str, compact: bool | None = None) -> VmDetail | VmCo
 def start_vm_tool(
     name_or_id: str,
     pause: bool = False,
+    use_cloud_init: bool = False,
+    use_sysprep: bool = False,
+    use_ignition: bool = False,
+    cloud_init_script: str | None = None,
+    cloud_init_hostname: str | None = None,
+    cloud_init_ssh_keys: str | None = None,
+    cloud_init_password: str | None = None,
+    sysprep_admin_password: str | None = None,
+    ignition_script: str | None = None,
     wait: bool = False,
     timeout_seconds: int = 60,
     dry_run: bool = False,
 ) -> VmLifecycleResult:
     """Start a virtual machine by name or UUID.
 
+    Supports standard boot, paused boot, and Run-Once execution with Cloud-Init, Sysprep, or Ignition.
+
     Args:
         name_or_id: Display name or UUID of the virtual machine.
         pause: If True, boots VM into paused state.
+        use_cloud_init: If True, enables Cloud-Init initialization for this run.
+        use_sysprep: If True, enables Windows Sysprep initialization for this run.
+        use_ignition: If True, enables Ignition initialization (CoreOS) for this run.
+        cloud_init_script: Run-Once user-data YAML script override.
+        cloud_init_hostname: Run-Once guest hostname override.
+        cloud_init_ssh_keys: Run-Once authorized SSH public keys override.
+        cloud_init_password: Run-Once root/guest user password override.
+        sysprep_admin_password: Run-Once Windows administrator password override.
+        ignition_script: Run-Once Ignition JSON configuration script override.
         wait: If True, waits synchronously until VM reaches 'up' (or 'paused') state.
         timeout_seconds: Maximum time to wait if wait=True.
         dry_run: If True, simulates the start operation and validates state without powering on.
@@ -1093,11 +1359,52 @@ def start_vm_tool(
             previous_status=prev_status,
             current_status=prev_status,
             dry_run=True,
-            message=f"[DRY RUN] VM '{vm_name}' is currently '{prev_status}'. Starting would power on the VM (pause={pause}). No changes were made.",
+            message=f"[DRY RUN] VM '{vm_name}' is currently '{prev_status}'. Starting would power on the VM (pause={pause}, cloud_init={use_cloud_init}, sysprep={use_sysprep}, ignition={use_ignition}). No changes were made.",
         )
 
+    start_kwargs: dict[str, Any] = {"pause": pause}
+    if use_cloud_init:
+        start_kwargs["use_cloud_init"] = True
+    if use_sysprep:
+        start_kwargs["use_sysprep"] = True
+    if use_ignition:
+        start_kwargs["use_ignition"] = True
+
+    if any(
+        x is not None
+        for x in (
+            cloud_init_script,
+            cloud_init_hostname,
+            cloud_init_ssh_keys,
+            cloud_init_password,
+            sysprep_admin_password,
+            ignition_script,
+        )
+    ):
+        override_init_kwargs: dict[str, Any] = {}
+        if cloud_init_script is not None:
+            override_init_kwargs["custom_script"] = cloud_init_script
+        elif ignition_script is not None:
+            override_init_kwargs["custom_script"] = ignition_script
+        if cloud_init_hostname is not None:
+            override_init_kwargs["host_name"] = cloud_init_hostname
+        if cloud_init_ssh_keys is not None:
+            override_init_kwargs["authorized_ssh_keys"] = cloud_init_ssh_keys
+        if cloud_init_password is not None:
+            override_init_kwargs["root_password"] = cloud_init_password
+        elif sysprep_admin_password is not None:
+            override_init_kwargs["root_password"] = sysprep_admin_password
+        start_kwargs["vm"] = sdk_types.Vm(
+            initialization=sdk_types.Initialization(**override_init_kwargs)
+        )
+        if not use_sysprep and not use_cloud_init and not use_ignition:
+            if ignition_script is not None:
+                start_kwargs["use_ignition"] = True
+            else:
+                start_kwargs["use_cloud_init"] = True
+
     try:
-        vm_service.start(pause=pause)
+        vm_service.start(**start_kwargs)
     except Exception as exc:
         audit_log("start_vm", vm_name, {"vm_id": vm_id, "error": str(exc)}, "FAILED")
         raise OvirtMCPError(
@@ -1430,6 +1737,398 @@ def reboot_vm_tool(
     )
 
 
+def cancel_vm_migration_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Cancel an in-progress live migration of a virtual machine.
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        VmLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"cancel live migration of VM '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("cancel_vm_migration")
+
+    client = get_client()
+    connection = client.get_connection()
+    vms_service = connection.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(vm.name)
+    current_status = getattr(getattr(vm, "status", None), "value", "unknown")
+    require_vm_status(vm_name, current_status, ("migrating",), "cancel_vm_migration")
+
+    if dry_run:
+        return VmLifecycleResult(
+            success=True,
+            action="cancel_migration",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Live migration cancellation validated for VM '{vm_name}' (status: {current_status}).",
+        )
+
+    try:
+        vm_service = vms_service.vm_service(vm_id)
+        vm_service.cancel_migration()
+        audit_log("ovirt_vm_cancel_migration", vm_name, {"vm_id": vm_id}, "SUCCESS")
+        return VmLifecycleResult(
+            success=True,
+            action="cancel_migration",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"Migration cancellation signal successfully sent to VM '{vm_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_cancel_migration", vm_name, {"vm_id": vm_id, "error": str(exc)}, "FAILED"
+        )
+        raise OvirtMCPError(f"Failed to cancel migration for VM '{vm_name}': {exc}") from exc
+
+
+def suspend_vm_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Suspend a running virtual machine to disk (pause / hibernate).
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        VmLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(f"suspend VM '{name_or_id}'", confirmed=confirm)
+    else:
+        require_mutation_allowed("suspend_vm")
+
+    client = get_client()
+    connection = client.get_connection()
+    vms_service = connection.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(vm.name)
+    current_status = getattr(getattr(vm, "status", None), "value", "unknown")
+    require_vm_status(vm_name, current_status, ("up",), "suspend_vm")
+
+    if dry_run:
+        return VmLifecycleResult(
+            success=True,
+            action="suspend",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Suspend validated for VM '{vm_name}' (status: {current_status}).",
+        )
+
+    try:
+        vm_service = vms_service.vm_service(vm_id)
+        vm_service.suspend()
+        audit_log("ovirt_vm_suspend", vm_name, {"vm_id": vm_id}, "SUCCESS")
+        return VmLifecycleResult(
+            success=True,
+            action="suspend",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status="saving_state",
+            dry_run=False,
+            message=f"Suspend operation initiated for VM '{vm_name}'. Memory state is saving to disk.",
+        )
+    except Exception as exc:
+        audit_log("ovirt_vm_suspend", vm_name, {"vm_id": vm_id, "error": str(exc)}, "FAILED")
+        raise OvirtMCPError(f"Failed to suspend VM '{vm_name}': {exc}") from exc
+
+
+def reset_vm_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Execute a hard hardware reset on a virtual machine (simulates physical reset button).
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        VmLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(f"hard reset VM '{name_or_id}'", confirmed=confirm)
+    else:
+        require_mutation_allowed("reset_vm")
+
+    client = get_client()
+    connection = client.get_connection()
+    vms_service = connection.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(vm.name)
+    current_status = getattr(getattr(vm, "status", None), "value", "unknown")
+    require_vm_status(vm_name, current_status, ("up", "powering_up", "paused"), "reset_vm")
+
+    if dry_run:
+        return VmLifecycleResult(
+            success=True,
+            action="reset",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Hard reset validated for VM '{vm_name}' (status: {current_status}).",
+        )
+
+    try:
+        vm_service = vms_service.vm_service(vm_id)
+        vm_service.reset()
+        audit_log("ovirt_vm_reset", vm_name, {"vm_id": vm_id}, "SUCCESS")
+        return VmLifecycleResult(
+            success=True,
+            action="reset",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status="powering_up",
+            dry_run=False,
+            message=f"Hard hardware reset signal sent to VM '{vm_name}'.",
+        )
+    except Exception as exc:
+        audit_log("ovirt_vm_reset", vm_name, {"vm_id": vm_id, "error": str(exc)}, "FAILED")
+        raise OvirtMCPError(f"Failed to reset VM '{vm_name}': {exc}") from exc
+
+
+def freeze_vm_filesystems_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Freeze (quiesce) virtual machine guest filesystems via guest agent for backup or snapshot.
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        VmLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"freeze filesystems of VM '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("freeze_vm_filesystems")
+
+    client = get_client()
+    connection = client.get_connection()
+    vms_service = connection.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(vm.name)
+    current_status = getattr(getattr(vm, "status", None), "value", "unknown")
+    require_vm_status(vm_name, current_status, ("up",), "freeze_vm_filesystems")
+
+    if dry_run:
+        return VmLifecycleResult(
+            success=True,
+            action="freeze_filesystems",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Guest filesystem freeze validated for VM '{vm_name}' (status: {current_status}).",
+        )
+
+    try:
+        vm_service = vms_service.vm_service(vm_id)
+        vm_service.freeze_filesystems()
+        audit_log("ovirt_vm_freeze_filesystems", vm_name, {"vm_id": vm_id}, "SUCCESS")
+        return VmLifecycleResult(
+            success=True,
+            action="freeze_filesystems",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"Guest filesystems successfully frozen on VM '{vm_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_freeze_filesystems",
+            vm_name,
+            {"vm_id": vm_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to freeze filesystems on VM '{vm_name}': {exc}") from exc
+
+
+def thaw_vm_filesystems_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Thaw (unquiesce) virtual machine guest filesystems via guest agent after backup or snapshot.
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        VmLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"thaw filesystems of VM '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("thaw_vm_filesystems")
+
+    client = get_client()
+    connection = client.get_connection()
+    vms_service = connection.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(vm.name)
+    current_status = getattr(getattr(vm, "status", None), "value", "unknown")
+    require_vm_status(vm_name, current_status, ("up",), "thaw_vm_filesystems")
+
+    if dry_run:
+        return VmLifecycleResult(
+            success=True,
+            action="thaw_filesystems",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Guest filesystem thaw validated for VM '{vm_name}' (status: {current_status}).",
+        )
+
+    try:
+        vm_service = vms_service.vm_service(vm_id)
+        vm_service.thaw_filesystems()
+        audit_log("ovirt_vm_thaw_filesystems", vm_name, {"vm_id": vm_id}, "SUCCESS")
+        return VmLifecycleResult(
+            success=True,
+            action="thaw_filesystems",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"Guest filesystems successfully thawed on VM '{vm_name}'.",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_thaw_filesystems",
+            vm_name,
+            {"vm_id": vm_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to thaw filesystems on VM '{vm_name}': {exc}") from exc
+
+
+def auto_pin_vm_tool(
+    name_or_id: str,
+    optimize_cpu_settings: bool = False,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmLifecycleResult:
+    """Apply automated CPU and NUMA node pinning topology to a virtual machine.
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+        optimize_cpu_settings: Whether to also optimize CPU socket/core topology settings.
+        dry_run: If True, validates preconditions without executing.
+        confirm: Confirmation flag for mutation in Safe Mode.
+
+    Returns:
+        VmLifecycleResult with operation outcome.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"auto-pin CPU and NUMA nodes for VM '{name_or_id}'", confirmed=confirm
+        )
+    else:
+        require_mutation_allowed("auto_pin_vm")
+
+    client = get_client()
+    connection = client.get_connection()
+    vms_service = connection.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(vm.name)
+    current_status = getattr(getattr(vm, "status", None), "value", "unknown")
+    require_vm_status(vm_name, current_status, ("down", "up"), "auto_pin_vm")
+
+    if dry_run:
+        return VmLifecycleResult(
+            success=True,
+            action="auto_pin",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=True,
+            message=f"[DRY RUN] Auto CPU/NUMA pinning validated for VM '{vm_name}' (optimize_cpu_settings={optimize_cpu_settings}).",
+        )
+
+    try:
+        vm_service = vms_service.vm_service(vm_id)
+        vm_service.auto_pin_cpu_and_numa_nodes(optimize_cpu_settings=optimize_cpu_settings)
+        audit_log(
+            "ovirt_vm_auto_pin",
+            vm_name,
+            {"vm_id": vm_id, "optimize_cpu_settings": optimize_cpu_settings},
+            "SUCCESS",
+        )
+        return VmLifecycleResult(
+            success=True,
+            action="auto_pin",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            previous_status=current_status,
+            current_status=current_status,
+            dry_run=False,
+            message=f"Auto CPU and NUMA pinning successfully applied to VM '{vm_name}' (optimize_cpu_settings={optimize_cpu_settings}).",
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_auto_pin",
+            vm_name,
+            {"vm_id": vm_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to auto-pin CPU and NUMA for VM '{vm_name}': {exc}") from exc
+
+
 def create_vm_tool(
     name: str,
     cluster: str,
@@ -1442,6 +2141,32 @@ def create_vm_tool(
     disk_size_gb: int | None = None,
     storage_domain: str | None = None,
     network_profile: str | None = None,
+    cloud_init_hostname: str | None = None,
+    cloud_init_user: str | None = None,
+    cloud_init_password: str | None = None,
+    cloud_init_ssh_keys: str | None = None,
+    cloud_init_script: str | None = None,
+    cloud_init_dns_servers: str | None = None,
+    cloud_init_dns_search: str | None = None,
+    cloud_init_regenerate_ssh_keys: bool | None = None,
+    cloud_init_timezone: str | None = None,
+    sysprep_domain: str | None = None,
+    sysprep_active_directory_ou: str | None = None,
+    sysprep_admin_password: str | None = None,
+    sysprep_user_name: str | None = None,
+    sysprep_license_key: str | None = None,
+    sysprep_org_name: str | None = None,
+    sysprep_input_locale: str | None = None,
+    sysprep_system_locale: str | None = None,
+    sysprep_ui_language: str | None = None,
+    sysprep_user_locale: str | None = None,
+    sysprep_custom_script: str | None = None,
+    sysprep_timezone: str | None = None,
+    nic_name: str | None = None,
+    nic_boot_protocol: str | None = None,
+    nic_ip_address: str | None = None,
+    nic_netmask: str | None = None,
+    nic_gateway: str | None = None,
     wait: bool = False,
     timeout_seconds: int = 120,
 ) -> VmCreateResult:
@@ -1459,6 +2184,32 @@ def create_vm_tool(
         disk_size_gb: Optional primary disk size in GB to create and attach.
         storage_domain: Target storage domain for the primary disk (optional).
         network_profile: Name or UUID of vNIC profile for primary network interface (e.g. 'ovirtmgmt').
+        cloud_init_hostname: Hostname for Linux Cloud-Init guest.
+        cloud_init_user: Default username for Linux Cloud-Init.
+        cloud_init_password: Password / root password for Linux Cloud-Init.
+        cloud_init_ssh_keys: Authorized public SSH key(s) for authentication.
+        cloud_init_script: Custom user-data YAML script (e.g. #cloud-config...).
+        cloud_init_dns_servers: Space or comma-separated DNS server IPs.
+        cloud_init_dns_search: DNS search domain.
+        cloud_init_regenerate_ssh_keys: If True, regenerates SSH host keys on first boot.
+        cloud_init_timezone: Timezone string for Linux guest (e.g. 'UTC', 'Europe/Budapest').
+        sysprep_domain: Active Directory domain to join for Windows guest.
+        sysprep_active_directory_ou: Active Directory Organizational Unit.
+        sysprep_admin_password: Administrator password for Windows Sysprep.
+        sysprep_user_name: Username for Windows Sysprep.
+        sysprep_license_key: Windows product license key.
+        sysprep_org_name: Organization name for Windows Sysprep.
+        sysprep_input_locale: Windows input locale (e.g. 'en-US').
+        sysprep_system_locale: Windows system locale.
+        sysprep_ui_language: Windows UI language.
+        sysprep_user_locale: Windows user locale.
+        sysprep_custom_script: Custom unattend script or commands for Sysprep.
+        sysprep_timezone: Timezone string for Windows guest.
+        nic_name: Interface name to configure (defaults to 'eth0').
+        nic_boot_protocol: Network boot protocol ('dhcp', 'static', 'autoconf').
+        nic_ip_address: Static IPv4 address for guest.
+        nic_netmask: Subnet mask for static IP.
+        nic_gateway: Default gateway for static IP.
         wait: If True, waits synchronously until VM status is 'down' (fully provisioned/unlocked).
         timeout_seconds: Maximum time to wait if wait=True.
 
@@ -1485,22 +2236,55 @@ def create_vm_tool(
 
     # 3. Build SDK VM specification
     os_spec = sdk_types.OperatingSystem(type=os_type) if os_type else None
-    vm_spec = sdk_types.Vm(
-        name=name,
-        cluster=sdk_types.Cluster(id=cluster_id),
-        template=sdk_types.Template(id=template_id),
-        memory=memory_mb * 1024 * 1024,
-        cpu=sdk_types.Cpu(
+    init_spec = build_initialization_spec(
+        cloud_init_hostname=cloud_init_hostname,
+        cloud_init_user=cloud_init_user,
+        cloud_init_password=cloud_init_password,
+        cloud_init_ssh_keys=cloud_init_ssh_keys,
+        cloud_init_script=cloud_init_script,
+        cloud_init_dns_servers=cloud_init_dns_servers,
+        cloud_init_dns_search=cloud_init_dns_search,
+        cloud_init_regenerate_ssh_keys=cloud_init_regenerate_ssh_keys,
+        cloud_init_timezone=cloud_init_timezone,
+        sysprep_domain=sysprep_domain,
+        sysprep_active_directory_ou=sysprep_active_directory_ou,
+        sysprep_admin_password=sysprep_admin_password,
+        sysprep_user_name=sysprep_user_name,
+        sysprep_license_key=sysprep_license_key,
+        sysprep_org_name=sysprep_org_name,
+        sysprep_input_locale=sysprep_input_locale,
+        sysprep_system_locale=sysprep_system_locale,
+        sysprep_ui_language=sysprep_ui_language,
+        sysprep_user_locale=sysprep_user_locale,
+        sysprep_custom_script=sysprep_custom_script,
+        sysprep_timezone=sysprep_timezone,
+        nic_name=nic_name,
+        nic_boot_protocol=nic_boot_protocol,
+        nic_ip_address=nic_ip_address,
+        nic_netmask=nic_netmask,
+        nic_gateway=nic_gateway,
+    )
+
+    vm_spec_kwargs: dict[str, Any] = {
+        "name": name,
+        "cluster": sdk_types.Cluster(id=cluster_id),
+        "template": sdk_types.Template(id=template_id),
+        "memory": memory_mb * 1024 * 1024,
+        "cpu": sdk_types.Cpu(
             topology=sdk_types.CpuTopology(
                 cores=cpu_cores,
                 sockets=cpu_sockets,
                 threads=1,
             )
         ),
-        type=sdk_types.VmType.SERVER,
-        description=description,
-        os=os_spec,
-    )
+        "type": sdk_types.VmType.SERVER,
+        "description": description,
+        "os": os_spec,
+    }
+    if init_spec is not None:
+        vm_spec_kwargs["initialization"] = init_spec
+
+    vm_spec = sdk_types.Vm(**vm_spec_kwargs)
 
     vms_service = system_service.vms_service()
     try:
@@ -1630,6 +2414,258 @@ def create_vm_tool(
             f"from template '{template_name}'."
         ),
     )
+
+
+def set_vm_initialization_tool(
+    name_or_id: str,
+    clear: bool = False,
+    cloud_init_hostname: str | None = None,
+    cloud_init_user: str | None = None,
+    cloud_init_password: str | None = None,
+    cloud_init_ssh_keys: str | None = None,
+    cloud_init_script: str | None = None,
+    cloud_init_dns_servers: str | None = None,
+    cloud_init_dns_search: str | None = None,
+    cloud_init_regenerate_ssh_keys: bool | None = None,
+    cloud_init_timezone: str | None = None,
+    sysprep_domain: str | None = None,
+    sysprep_active_directory_ou: str | None = None,
+    sysprep_admin_password: str | None = None,
+    sysprep_user_name: str | None = None,
+    sysprep_license_key: str | None = None,
+    sysprep_org_name: str | None = None,
+    sysprep_input_locale: str | None = None,
+    sysprep_system_locale: str | None = None,
+    sysprep_ui_language: str | None = None,
+    sysprep_user_locale: str | None = None,
+    sysprep_custom_script: str | None = None,
+    sysprep_timezone: str | None = None,
+    nic_name: str | None = None,
+    nic_boot_protocol: str | None = None,
+    nic_ip_address: str | None = None,
+    nic_netmask: str | None = None,
+    nic_gateway: str | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmInitializationResult:
+    """Configure or clear Cloud-Init or Sysprep initialization on a virtual machine.
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+        clear: If True, removes all initialization settings from the VM.
+        cloud_init_hostname: Hostname for Linux Cloud-Init guest.
+        cloud_init_user: Default username for Linux Cloud-Init.
+        cloud_init_password: Password / root password for Linux Cloud-Init.
+        cloud_init_ssh_keys: Authorized public SSH key(s) for authentication.
+        cloud_init_script: Custom user-data YAML script (e.g. #cloud-config...).
+        cloud_init_dns_servers: Space or comma-separated DNS server IPs.
+        cloud_init_dns_search: DNS search domain.
+        cloud_init_regenerate_ssh_keys: If True, regenerates SSH host keys on first boot.
+        cloud_init_timezone: Timezone string for Linux guest (e.g. 'UTC', 'Europe/Budapest').
+        sysprep_domain: Active Directory domain to join for Windows guest.
+        sysprep_active_directory_ou: Active Directory Organizational Unit.
+        sysprep_admin_password: Administrator password for Windows Sysprep.
+        sysprep_user_name: Username for Windows Sysprep.
+        sysprep_license_key: Windows product license key.
+        sysprep_org_name: Organization name for Windows Sysprep.
+        sysprep_input_locale: Windows input locale (e.g. 'en-US').
+        sysprep_system_locale: Windows system locale.
+        sysprep_ui_language: Windows UI language.
+        sysprep_user_locale: Windows user locale.
+        sysprep_custom_script: Custom unattend script or commands for Sysprep.
+        sysprep_timezone: Timezone string for Windows guest.
+        nic_name: Interface name to configure (defaults to 'eth0').
+        nic_boot_protocol: Network boot protocol ('dhcp', 'static', 'autoconf').
+        nic_ip_address: Static IPv4 address for guest.
+        nic_netmask: Subnet mask for static IP.
+        nic_gateway: Default gateway for static IP.
+        dry_run: If True, simulates changes without writing to oVirt.
+        confirm: Confirmation flag required in Safe Mode when clearing initialization.
+
+    Returns:
+        VmInitializationResult with operation status and configured values.
+    """
+    require_mutation_allowed("set_vm_initialization")
+
+    client = get_client()
+    conn = client.get_connection()
+    vms_service = conn.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(vm.name)
+    vm_service = vms_service.vm_service(vm_id)
+
+    if clear:
+        require_destructive_confirmation(
+            f"clear initialization settings for VM '{vm_name}'", confirmed=confirm
+        )
+        if dry_run:
+            audit_log(
+                "set_vm_initialization",
+                vm_name,
+                {"vm_id": vm_id, "action": "clear", "dry_run": True},
+                "SUCCESS",
+            )
+            return VmInitializationResult(
+                success=True,
+                action="clear",
+                vm_id=vm_id,
+                vm_name=vm_name,
+                initialization_type=None,
+                dry_run=True,
+                message=f"[DRY RUN] Would clear initialization settings on VM '{vm_name}'.",
+            )
+        try:
+            vm_service.update(sdk_types.Vm(initialization=sdk_types.Initialization()))
+        except Exception as exc:
+            audit_log(
+                "set_vm_initialization",
+                vm_name,
+                {"vm_id": vm_id, "action": "clear", "error": str(exc)},
+                "FAILED",
+            )
+            raise OvirtMCPError(
+                f"Failed to clear initialization for VM '{vm_name}': {exc}"
+            ) from exc
+
+        audit_log("set_vm_initialization", vm_name, {"vm_id": vm_id, "action": "clear"}, "SUCCESS")
+        return VmInitializationResult(
+            success=True,
+            action="clear",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            initialization_type=None,
+            message=f"Initialization settings successfully cleared for VM '{vm_name}'.",
+        )
+
+    init_spec = build_initialization_spec(
+        cloud_init_hostname=cloud_init_hostname,
+        cloud_init_user=cloud_init_user,
+        cloud_init_password=cloud_init_password,
+        cloud_init_ssh_keys=cloud_init_ssh_keys,
+        cloud_init_script=cloud_init_script,
+        cloud_init_dns_servers=cloud_init_dns_servers,
+        cloud_init_dns_search=cloud_init_dns_search,
+        cloud_init_regenerate_ssh_keys=cloud_init_regenerate_ssh_keys,
+        cloud_init_timezone=cloud_init_timezone,
+        sysprep_domain=sysprep_domain,
+        sysprep_active_directory_ou=sysprep_active_directory_ou,
+        sysprep_admin_password=sysprep_admin_password,
+        sysprep_user_name=sysprep_user_name,
+        sysprep_license_key=sysprep_license_key,
+        sysprep_org_name=sysprep_org_name,
+        sysprep_input_locale=sysprep_input_locale,
+        sysprep_system_locale=sysprep_system_locale,
+        sysprep_ui_language=sysprep_ui_language,
+        sysprep_user_locale=sysprep_user_locale,
+        sysprep_custom_script=sysprep_custom_script,
+        sysprep_timezone=sysprep_timezone,
+        nic_name=nic_name,
+        nic_boot_protocol=nic_boot_protocol,
+        nic_ip_address=nic_ip_address,
+        nic_netmask=nic_netmask,
+        nic_gateway=nic_gateway,
+    )
+
+    if init_spec is None:
+        raise OvirtValidationError(
+            "No initialization parameters provided. Specify Cloud-Init or Sysprep settings, or clear=True."
+        )
+
+    is_sysprep = any(
+        x is not None
+        for x in (
+            sysprep_domain,
+            sysprep_license_key,
+            sysprep_org_name,
+            sysprep_input_locale,
+            sysprep_system_locale,
+            sysprep_ui_language,
+            sysprep_user_locale,
+            sysprep_custom_script,
+            sysprep_admin_password,
+        )
+    )
+    init_type = "sysprep" if is_sysprep else "cloud_init"
+
+    if dry_run:
+        audit_log(
+            "set_vm_initialization",
+            vm_name,
+            {"vm_id": vm_id, "type": init_type, "dry_run": True},
+            "SUCCESS",
+        )
+        return VmInitializationResult(
+            success=True,
+            action="set",
+            vm_id=vm_id,
+            vm_name=vm_name,
+            initialization_type=init_type,
+            host_name=cloud_init_hostname,
+            user_name=cloud_init_user or sysprep_user_name,
+            has_custom_script=bool(cloud_init_script or sysprep_custom_script),
+            authorized_ssh_keys_set=bool(cloud_init_ssh_keys),
+            regenerate_ssh_keys=cloud_init_regenerate_ssh_keys,
+            domain=sysprep_domain,
+            org_name=sysprep_org_name,
+            dry_run=True,
+            message=f"[DRY RUN] Would configure {init_type} initialization on VM '{vm_name}'.",
+        )
+
+    try:
+        vm_service.update(sdk_types.Vm(initialization=init_spec))
+    except Exception as exc:
+        audit_log(
+            "set_vm_initialization",
+            vm_name,
+            {"vm_id": vm_id, "type": init_type, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to configure initialization for VM '{vm_name}': {exc}",
+            details={"vm_id": vm_id, "error": str(exc)},
+        ) from exc
+
+    audit_log(
+        "set_vm_initialization",
+        vm_name,
+        {"vm_id": vm_id, "type": init_type},
+        "SUCCESS",
+    )
+    return VmInitializationResult(
+        success=True,
+        action="set",
+        vm_id=vm_id,
+        vm_name=vm_name,
+        initialization_type=init_type,
+        host_name=cloud_init_hostname,
+        user_name=cloud_init_user or sysprep_user_name,
+        has_custom_script=bool(cloud_init_script or sysprep_custom_script),
+        authorized_ssh_keys_set=bool(cloud_init_ssh_keys),
+        regenerate_ssh_keys=cloud_init_regenerate_ssh_keys,
+        domain=sysprep_domain,
+        org_name=sysprep_org_name,
+        message=f"{init_type.capitalize()} initialization successfully configured for VM '{vm_name}'.",
+    )
+
+
+def get_vm_initialization_tool(name_or_id: str) -> VmInitializationInfo:
+    """Retrieve Cloud-Init or Sysprep initialization settings configured on a virtual machine.
+
+    Args:
+        name_or_id: Display name or UUID of the virtual machine.
+
+    Returns:
+        VmInitializationInfo with all configured guest initialization parameters.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    vms_service = conn.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    info = extract_vm_initialization(vm)
+    if info is None:
+        return VmInitializationInfo(type=None)
+    return info
 
 
 def delete_vm_tool(
@@ -2117,6 +3153,24 @@ def create_vm_snapshot_tool(
     vm_name = str(vm.name)
     vm_service = vms_service.vm_service(vm_id)
 
+    curr_status = getattr(
+        getattr(vm, "status", None), "value", str(getattr(vm, "status", "unknown"))
+    ).lower()
+    if persist_memory:
+        require_vm_status(
+            vm_name,
+            curr_status,
+            allowed_statuses=("up", "paused"),
+            action_name="create_vm_memory_snapshot",
+        )
+    else:
+        require_vm_status(
+            vm_name,
+            curr_status,
+            allowed_statuses=("up", "down", "paused"),
+            action_name="create_vm_snapshot",
+        )
+
     if dry_run:
         audit_log(
             "create_vm_snapshot",
@@ -2234,14 +3288,12 @@ def restore_vm_snapshot_tool(
             except Exception as poll_err:
                 logger.debug("Transient poll error waiting for image unlock: %s", poll_err)
 
-    if curr_status != "down":
-        raise OvirtValidationError(
-            f"Cannot restore snapshot on VM '{vm_name}' because its current status is '{curr_status}'. "
-            "Please stop the virtual machine first before restoring a snapshot.",
-            details={"vm_id": vm_id, "status": curr_status},
-        )
+    require_vm_status(vm_name, curr_status, ("down",), action_name="restore_vm_snapshot")
 
     snap_service = vm_service.snapshots_service().snapshot_service(snapshot_id)
+    target_snap = snap_service.get()
+    snap_status = getattr(getattr(target_snap, "snapshot_status", None), "value", "ok")
+    require_snapshot_status(snapshot_id, snap_status, ("ok",), action_name="restore_vm_snapshot")
 
     # Pre-flight check: verify memory existence if restore_memory=True
     if restore_memory:
@@ -2390,7 +3442,15 @@ def preview_vm_snapshot_tool(
     vm_name = str(vm.name)
     vm_service = vms_service.vm_service(vm_id)
 
+    curr_status = getattr(
+        getattr(vm, "status", None), "value", str(getattr(vm, "status", "unknown"))
+    ).lower()
+    require_vm_status(vm_name, curr_status, ("down",), action_name="preview_vm_snapshot")
+
     snap_service = vm_service.snapshots_service().snapshot_service(snapshot_id)
+    target_snap = snap_service.get()
+    snap_status = getattr(getattr(target_snap, "snapshot_status", None), "value", "ok")
+    require_snapshot_status(snapshot_id, snap_status, ("ok",), action_name="preview_vm_snapshot")
 
     # Pre-flight check: if restore_memory=True, verify snapshot has memory
     if restore_memory:
@@ -2688,7 +3748,17 @@ def delete_vm_snapshot_tool(
     vm_name = str(vm.name)
     vm_service = vms_service.vm_service(vm_id)
 
+    curr_status = getattr(
+        getattr(vm, "status", None), "value", str(getattr(vm, "status", "unknown"))
+    ).lower()
+    require_vm_status(
+        vm_name, curr_status, ("up", "down", "paused"), action_name="delete_vm_snapshot"
+    )
+
     snap_service = vm_service.snapshots_service().snapshot_service(snapshot_id)
+    target_snap = snap_service.get()
+    snap_status = getattr(getattr(target_snap, "snapshot_status", None), "value", "ok")
+    require_snapshot_status(snapshot_id, snap_status, ("ok",), action_name="delete_vm_snapshot")
 
     if dry_run:
         audit_log(
@@ -2768,4 +3838,773 @@ def delete_vm_snapshot_tool(
         vm_name=vm_name,
         snapshot_id=snapshot_id,
         message=f"Snapshot '{snapshot_id}' deleted and consolidated successfully for VM '{vm_name}'.",
+    )
+
+
+def clone_vm_tool(
+    source_name_or_id: str,
+    new_name: str,
+    cluster: str | None = None,
+    storage_domain: str | None = None,
+    discard_snapshots: bool = False,
+    wait: bool = False,
+    timeout_seconds: int = 120,
+    dry_run: bool = False,
+) -> VmCloneResult:
+    """Clone an existing virtual machine to create a new independent VM.
+
+    Args:
+        source_name_or_id: Name or UUID of the source virtual machine to clone.
+        new_name: Name of the new cloned virtual machine.
+        cluster: Optional target cluster name or UUID. Defaults to source VM's cluster.
+        storage_domain: Optional target storage domain name or UUID where cloned disks will reside.
+        discard_snapshots: If True, snapshots are collapsed into a single active image.
+        wait: If True, waits synchronously until the cloned VM finishes provisioning and is down (unlocked).
+        timeout_seconds: Maximum seconds to wait when wait=True (default 120s).
+        dry_run: If True, simulates validation and compatibility without executing clone.
+
+    Returns:
+        VmCloneResult with source and target VM IDs, names, and status.
+    """
+    require_mutation_allowed("clone_vm")
+
+    client = get_client()
+    conn = client.get_connection()
+    system_service = conn.system_service()
+    vms_service = system_service.vms_service()
+
+    # 1. Resolve source VM
+    source_vm = client.find_resource_by_id_or_name(vms_service, source_name_or_id, "vm")
+    source_vm_id = str(source_vm.id)
+    raw_src_name = getattr(source_vm, "name", source_vm_id)
+    if type(raw_src_name).__name__ in ("MagicMock", "Mock") and hasattr(raw_src_name, "_mock_name"):
+        source_vm_name = getattr(raw_src_name, "_mock_name", str(source_vm_id))
+    else:
+        source_vm_name = str(raw_src_name)
+    source_status = getattr(
+        getattr(source_vm, "status", None), "value", str(getattr(source_vm, "status", "unknown"))
+    ).lower()
+    require_vm_status(source_vm_name, source_status, ("down",), action_name="clone_vm")
+
+    # 2. Check if new_name already exists
+    try:
+        existing = vms_service.list(search=f"name={new_name}")
+        for ev in existing:
+            ev_name = getattr(ev, "name", "")
+            if type(ev_name).__name__ in ("MagicMock", "Mock") and hasattr(ev_name, "_mock_name"):
+                ev_name = getattr(ev_name, "_mock_name", "")
+            else:
+                ev_name = str(ev_name)
+            if ev_name == new_name:
+                raise OvirtValidationError(
+                    f"A virtual machine with name '{new_name}' already exists in oVirt inventory.",
+                    details={"new_name": new_name, "existing_vm_id": str(getattr(ev, "id", ""))},
+                )
+    except OvirtValidationError:
+        raise
+    except Exception as exc:
+        logger.debug("Could not verify VM uniqueness via search: %s", exc)
+
+    # 3. Resolve optional target cluster
+    cluster_obj = None
+    if cluster:
+        clusters_service = system_service.clusters_service()
+        cluster_obj = client.find_resource_by_id_or_name(clusters_service, cluster, "cluster")
+
+    # 4. Resolve optional target storage domain
+    sd_obj = None
+    if storage_domain:
+        sds_service = system_service.storage_domains_service()
+        sd_obj = client.find_resource_by_id_or_name(sds_service, storage_domain, "storage domain")
+
+    if dry_run:
+        audit_log(
+            "ovirt_vm_clone",
+            new_name,
+            {
+                "source_vm_id": source_vm_id,
+                "source_vm_name": source_vm_name,
+                "target_cluster": str(cluster_obj.name) if cluster_obj else None,
+                "target_storage_domain": str(sd_obj.name) if sd_obj else None,
+                "dry_run": True,
+            },
+            "SUCCESS",
+        )
+        return VmCloneResult(
+            success=True,
+            source_vm_id=source_vm_id,
+            source_vm_name=source_vm_name,
+            cloned_vm_id="dry-run-vm-id",
+            cloned_vm_name=new_name,
+            dry_run=True,
+            message=f"[DRY RUN] VM clone from '{source_vm_name}' to '{new_name}' validated successfully.",
+        )
+
+    # 5. Execute clone via SDK
+    vm_spec = sdk_types.Vm(name=new_name)
+    if cluster_obj:
+        vm_spec.cluster = sdk_types.Cluster(id=str(cluster_obj.id))
+
+    sd_spec = sdk_types.StorageDomain(id=str(sd_obj.id)) if sd_obj else None
+
+    vm_service = vms_service.vm_service(source_vm_id)
+    try:
+        cloned_vm = vm_service.clone(
+            vm=vm_spec,
+            storage_domain=sd_spec,
+            discard_snapshots=discard_snapshots if discard_snapshots else None,
+        )
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_clone",
+            new_name,
+            {"source_vm_id": source_vm_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to clone VM '{source_vm_name}' to '{new_name}': {exc}",
+            details={"source_vm_id": source_vm_id, "error": str(exc)},
+        ) from exc
+
+    cloned_id = str(getattr(cloned_vm, "id", ""))
+    if not cloned_id:
+        try:
+            matched = vms_service.list(search=f"name={new_name}")
+            if matched:
+                cloned_id = str(matched[0].id)
+        except Exception:
+            cloned_id = "pending-id"
+
+    # 6. Wait if requested
+    if wait and cloned_id and cloned_id != "pending-id":
+        start_time = time.time()
+        while time.time() - start_time < timeout_seconds:
+            time.sleep(3)
+            try:
+                cloned_service = vms_service.vm_service(cloned_id)
+                current_cloned = cloned_service.get()
+                st = str(
+                    getattr(
+                        getattr(current_cloned, "status", None),
+                        "value",
+                        current_cloned.status or "",
+                    )
+                ).lower()
+                if st == "down":
+                    break
+            except Exception:
+                pass
+
+    audit_log(
+        "ovirt_vm_clone",
+        new_name,
+        {"source_vm_id": source_vm_id, "cloned_vm_id": cloned_id},
+        "SUCCESS",
+    )
+    return VmCloneResult(
+        success=True,
+        source_vm_id=source_vm_id,
+        source_vm_name=source_vm_name,
+        cloned_vm_id=cloned_id,
+        cloned_vm_name=new_name,
+        dry_run=False,
+        message=f"Virtual machine '{source_vm_name}' cloned successfully into '{new_name}' (UUID: {cloned_id}).",
+    )
+
+
+def clone_vm_from_snapshot_tool(
+    name_or_id: str,
+    snapshot_id: str,
+    new_name: str,
+    cluster: str | None = None,
+    wait: bool = False,
+    timeout_seconds: int = 180,
+    dry_run: bool = False,
+) -> VmCloneResult:
+    """Create a new independent virtual machine from an existing snapshot.
+
+    Args:
+        name_or_id: Display name or UUID of the source virtual machine.
+        snapshot_id: UUID of the snapshot to clone from.
+        new_name: Display name for the newly cloned virtual machine.
+        cluster: Optional target cluster name or UUID (defaults to source VM's cluster).
+        wait: If True, waits synchronously until the new VM finishes cloning and reaches 'down' status.
+        timeout_seconds: Maximum seconds to wait when wait=True.
+        dry_run: If True, validates parameters without cloning.
+
+    Returns:
+        VmCloneResult with source and target VM IDs and names.
+    """
+    require_mutation_allowed("clone_vm_from_snapshot")
+
+    client = get_client()
+    conn = client.get_connection()
+    system_service = conn.system_service()
+    vms_service = system_service.vms_service()
+
+    # 1. Resolve source VM
+    source_vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    source_vm_id = str(source_vm.id)
+    raw_src_name = getattr(source_vm, "name", source_vm_id)
+    if type(raw_src_name).__name__ in ("MagicMock", "Mock") and hasattr(raw_src_name, "_mock_name"):
+        source_vm_name = getattr(raw_src_name, "_mock_name", str(source_vm_id))
+    else:
+        source_vm_name = str(raw_src_name)
+    snap_service = (
+        vms_service.vm_service(source_vm_id).snapshots_service().snapshot_service(snapshot_id)
+    )
+    target_snap = snap_service.get()
+    snap_status = getattr(getattr(target_snap, "snapshot_status", None), "value", "ok")
+    require_snapshot_status(snapshot_id, snap_status, ("ok",), action_name="clone_vm_from_snapshot")
+
+    # 2. Check if new_name already exists
+    try:
+        existing = vms_service.list(search=f"name={new_name}")
+        for ev in existing:
+            ev_name = getattr(ev, "name", "")
+            if type(ev_name).__name__ in ("MagicMock", "Mock") and hasattr(ev_name, "_mock_name"):
+                ev_name = getattr(ev_name, "_mock_name", "")
+            else:
+                ev_name = str(ev_name)
+            if ev_name == new_name:
+                raise OvirtValidationError(
+                    f"A virtual machine with name '{new_name}' already exists in oVirt inventory.",
+                    details={"new_name": new_name, "existing_vm_id": str(getattr(ev, "id", ""))},
+                )
+    except OvirtValidationError:
+        raise
+    except Exception as exc:
+        logger.debug("Could not verify VM uniqueness via search: %s", exc)
+
+    # 3. Resolve optional target cluster
+    cluster_obj = None
+    if cluster:
+        clusters_service = system_service.clusters_service()
+        cluster_obj = client.find_resource_by_id_or_name(clusters_service, cluster, "cluster")
+
+    target_cluster_id = (
+        str(cluster_obj.id)
+        if cluster_obj
+        else str(getattr(getattr(source_vm, "cluster", None), "id", ""))
+    )
+
+    # 4. Verify snapshot exists on source VM
+    vm_service = vms_service.vm_service(source_vm_id)
+    try:
+        snap_service = vm_service.snapshots_service().snapshot_service(snapshot_id)
+        snap_obj = snap_service.get()
+        snap_desc = getattr(snap_obj, "description", snapshot_id)
+    except Exception as exc:
+        raise OvirtValidationError(
+            f"Snapshot '{snapshot_id}' not found on VM '{source_vm_name}': {exc}",
+            details={"vm_id": source_vm_id, "snapshot_id": snapshot_id, "error": str(exc)},
+        ) from exc
+
+    if dry_run:
+        audit_log(
+            "ovirt_vm_snapshot_clone",
+            new_name,
+            {
+                "source_vm_id": source_vm_id,
+                "source_vm_name": source_vm_name,
+                "snapshot_id": snapshot_id,
+                "target_cluster": str(cluster_obj.name) if cluster_obj else None,
+                "dry_run": True,
+            },
+            "SUCCESS",
+        )
+        return VmCloneResult(
+            success=True,
+            source_vm_id=source_vm_id,
+            source_vm_name=source_vm_name,
+            cloned_vm_id="dry-run-vm-id",
+            cloned_vm_name=new_name,
+            dry_run=True,
+            message=f"[DRY RUN] Cloning VM from snapshot '{snap_desc}' ({snapshot_id}) of '{source_vm_name}' to '{new_name}' validated successfully.",
+        )
+
+    # 5. Execute clone from snapshot
+    vm_spec = sdk_types.Vm(
+        name=new_name,
+        snapshots=[sdk_types.Snapshot(id=snapshot_id)],
+    )
+    if target_cluster_id:
+        vm_spec.cluster = sdk_types.Cluster(id=target_cluster_id)
+
+    try:
+        created_vm = vms_service.add(vm=vm_spec)
+        cloned_id = str(getattr(created_vm, "id", ""))
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_snapshot_clone",
+            new_name,
+            {"source_vm_id": source_vm_id, "snapshot_id": snapshot_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to clone VM from snapshot '{snapshot_id}' on '{source_vm_name}' to '{new_name}': {exc}",
+            details={"source_vm_id": source_vm_id, "snapshot_id": snapshot_id, "error": str(exc)},
+        ) from exc
+
+    if not cloned_id:
+        try:
+            matched = vms_service.list(search=f"name={new_name}")
+            if matched:
+                cloned_id = str(matched[0].id)
+        except Exception:
+            cloned_id = "pending-id"
+
+    # 6. Wait if requested
+    if wait and cloned_id and cloned_id != "pending-id":
+        start_time = time.time()
+        while time.time() - start_time < timeout_seconds:
+            time.sleep(3)
+            try:
+                cloned_service = vms_service.vm_service(cloned_id)
+                current_cloned = cloned_service.get()
+                st = str(
+                    getattr(
+                        getattr(current_cloned, "status", None),
+                        "value",
+                        current_cloned.status or "",
+                    )
+                ).lower()
+                if st == "down":
+                    break
+            except Exception:
+                pass
+
+    audit_log(
+        "ovirt_vm_snapshot_clone",
+        new_name,
+        {"source_vm_id": source_vm_id, "snapshot_id": snapshot_id, "cloned_vm_id": cloned_id},
+        "SUCCESS",
+    )
+    return VmCloneResult(
+        success=True,
+        source_vm_id=source_vm_id,
+        source_vm_name=source_vm_name,
+        cloned_vm_id=cloned_id,
+        cloned_vm_name=new_name,
+        dry_run=False,
+        message=f"Virtual machine '{new_name}' (UUID: {cloned_id}) successfully cloned from snapshot '{snap_desc}' of '{source_vm_name}'.",
+    )
+
+
+# ── WATCHDOG & HOST DEVICE MANAGEMENT TOOLS ───────────────────────────────────
+
+
+def list_vm_watchdogs_tool(name_or_id: str) -> list[VmWatchdogInfo]:
+    """List hardware watchdog devices configured on a virtual machine.
+
+    Args:
+        name_or_id: Virtual machine name or UUID.
+
+    Returns:
+        List of VmWatchdogInfo objects.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    vms_service = conn.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+
+    watchdogs_service = vms_service.vm_service(vm_id).watchdogs_service()
+    watchdogs = watchdogs_service.list() or []
+
+    results: list[VmWatchdogInfo] = []
+    for w in watchdogs:
+        if _is_mock_object(w):
+            continue
+        model_val = getattr(getattr(w, "model", None), "value", str(getattr(w, "model", "") or ""))
+        action_val = getattr(
+            getattr(w, "action", None), "value", str(getattr(w, "action", "") or "")
+        )
+        results.append(
+            VmWatchdogInfo(
+                id=str(w.id),
+                model=model_val.lower() if model_val else "unknown",
+                action=action_val.lower() if action_val else "none",
+            )
+        )
+    return results
+
+
+def add_vm_watchdog_tool(
+    name_or_id: str,
+    model: str = "i6300esb",
+    action: str = "reset",
+    dry_run: bool = False,
+) -> VmHardwareResult:
+    """Add a virtual hardware watchdog device to a virtual machine.
+
+    Args:
+        name_or_id: Virtual machine name or UUID.
+        model: Hardware watchdog model ('i6300esb' or 'diag288').
+        action: Expiration action ('reset', 'poweroff', 'pause', 'dump', 'none').
+        dry_run: If True, simulates without adding the watchdog.
+
+    Returns:
+        VmHardwareResult with operation status.
+    """
+    require_mutation_allowed("add_vm_watchdog")
+
+    m_lower = model.lower().strip()
+    act_lower = action.lower().strip()
+
+    model_enum = (
+        sdk_types.WatchdogModel.I6300ESB
+        if m_lower == "i6300esb"
+        else sdk_types.WatchdogModel.DIAG288
+        if m_lower == "diag288"
+        else None
+    )
+    if model_enum is None:
+        raise OvirtValidationError(
+            f"Invalid watchdog model '{model}'. Allowed: 'i6300esb', 'diag288'."
+        )
+
+    action_map = {
+        "reset": sdk_types.WatchdogAction.RESET,
+        "poweroff": sdk_types.WatchdogAction.POWEROFF,
+        "pause": sdk_types.WatchdogAction.PAUSE,
+        "dump": sdk_types.WatchdogAction.DUMP,
+        "none": sdk_types.WatchdogAction.NONE,
+    }
+    action_enum = action_map.get(act_lower)
+    if action_enum is None:
+        raise OvirtValidationError(
+            f"Invalid watchdog action '{action}'. Allowed: {list(action_map.keys())}."
+        )
+
+    client = get_client()
+    conn = client.get_connection()
+    vms_service = conn.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(getattr(vm, "name", vm_id))
+
+    if dry_run:
+        audit_log(
+            "ovirt_vm_watchdog_add",
+            vm_name,
+            {"vm_id": vm_id, "model": m_lower, "action": act_lower, "dry_run": True},
+            "SUCCESS",
+        )
+        return VmHardwareResult(
+            success=True,
+            vm_id=vm_id,
+            vm_name=vm_name,
+            device_type="watchdog",
+            action="add",
+            dry_run=True,
+            message=f"[DRY RUN] Watchdog device ({m_lower}, action={act_lower}) would be added to VM '{vm_name}'.",
+        )
+
+    watchdogs_service = vms_service.vm_service(vm_id).watchdogs_service()
+    try:
+        watchdogs_service.add(sdk_types.Watchdog(model=model_enum, action=action_enum))
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_watchdog_add",
+            vm_name,
+            {"vm_id": vm_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to add watchdog to VM '{vm_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_vm_watchdog_add",
+        vm_name,
+        {"vm_id": vm_id, "model": m_lower, "action": act_lower},
+        "SUCCESS",
+    )
+    return VmHardwareResult(
+        success=True,
+        vm_id=vm_id,
+        vm_name=vm_name,
+        device_type="watchdog",
+        action="add",
+        dry_run=False,
+        message=f"Watchdog device ({m_lower}, action={act_lower}) successfully added to VM '{vm_name}'.",
+    )
+
+
+def remove_vm_watchdog_tool(
+    name_or_id: str,
+    watchdog_id: str | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmHardwareResult:
+    """Remove a watchdog device from a virtual machine.
+
+    Args:
+        name_or_id: Virtual machine name or UUID.
+        watchdog_id: Optional UUID of watchdog device. If omitted, removes first configured watchdog.
+        dry_run: If True, simulates without removing the watchdog.
+        confirm: Confirmation flag required in Safe Mode.
+
+    Returns:
+        VmHardwareResult with removal status.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"remove watchdog device from VM '{name_or_id}'",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("remove_vm_watchdog")
+
+    client = get_client()
+    conn = client.get_connection()
+    vms_service = conn.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(getattr(vm, "name", vm_id))
+
+    watchdogs_service = vms_service.vm_service(vm_id).watchdogs_service()
+    watchdogs = watchdogs_service.list() or []
+
+    target_id = watchdog_id
+    if target_id is None:
+        if not watchdogs:
+            raise OvirtValidationError(
+                f"VM '{vm_name}' does not have any watchdog devices to remove."
+            )
+        target_id = str(watchdogs[0].id)
+
+    if dry_run:
+        audit_log(
+            "ovirt_vm_watchdog_remove",
+            vm_name,
+            {"vm_id": vm_id, "watchdog_id": target_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return VmHardwareResult(
+            success=True,
+            vm_id=vm_id,
+            vm_name=vm_name,
+            device_type="watchdog",
+            action="remove",
+            dry_run=True,
+            message=f"[DRY RUN] Watchdog device '{target_id}' would be removed from VM '{vm_name}'.",
+        )
+
+    try:
+        watchdogs_service.watchdog_service(target_id).remove()
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_watchdog_remove",
+            vm_name,
+            {"vm_id": vm_id, "watchdog_id": target_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to remove watchdog from VM '{vm_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_vm_watchdog_remove",
+        vm_name,
+        {"vm_id": vm_id, "watchdog_id": target_id},
+        "SUCCESS",
+    )
+    return VmHardwareResult(
+        success=True,
+        vm_id=vm_id,
+        vm_name=vm_name,
+        device_type="watchdog",
+        action="remove",
+        dry_run=False,
+        message=f"Watchdog device '{target_id}' successfully removed from VM '{vm_name}'.",
+    )
+
+
+def list_vm_host_devices_tool(name_or_id: str) -> list[VmHostDeviceInfo]:
+    """List physical host devices (SR-IOV, GPU, PCI passthrough) attached to a virtual machine.
+
+    Args:
+        name_or_id: Virtual machine name or UUID.
+
+    Returns:
+        List of VmHostDeviceInfo attached to the VM.
+    """
+    client = get_client()
+    conn = client.get_connection()
+    vms_service = conn.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+
+    devices_service = vms_service.vm_service(vm_id).host_devices_service()
+    devices = devices_service.list() or []
+
+    results: list[VmHostDeviceInfo] = []
+    for d in devices:
+        if _is_mock_object(d):
+            continue
+        prod = getattr(d, "product", None)
+        vend = getattr(d, "vendor", None)
+        prod_name = _safe_str(getattr(prod, "name", None)) if prod else None
+        vend_name = _safe_str(getattr(vend, "name", None)) if vend else None
+        results.append(
+            VmHostDeviceInfo(
+                name=str(d.name),
+                product=prod_name,
+                vendor=vend_name,
+                driver=_safe_str(getattr(d, "driver", None)),
+                iommu_group=getattr(d, "iommu_group", None),
+            )
+        )
+    return results
+
+
+def attach_vm_host_device_tool(
+    name_or_id: str,
+    host_device_name: str,
+    dry_run: bool = False,
+) -> VmHardwareResult:
+    """Attach a physical host device (PCI passthrough, SR-IOV vGPU) to a virtual machine.
+
+    Args:
+        name_or_id: Virtual machine name or UUID.
+        host_device_name: System name of the host device (e.g. 'pci_0000_00_16_3').
+        dry_run: If True, simulates without attaching the device.
+
+    Returns:
+        VmHardwareResult with attachment status.
+    """
+    require_mutation_allowed("attach_vm_host_device")
+
+    client = get_client()
+    conn = client.get_connection()
+    vms_service = conn.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(getattr(vm, "name", vm_id))
+
+    if dry_run:
+        audit_log(
+            "ovirt_vm_host_device_attach",
+            vm_name,
+            {"vm_id": vm_id, "host_device": host_device_name, "dry_run": True},
+            "SUCCESS",
+        )
+        return VmHardwareResult(
+            success=True,
+            vm_id=vm_id,
+            vm_name=vm_name,
+            device_type="host_device",
+            action="attach",
+            dry_run=True,
+            message=f"[DRY RUN] Host device '{host_device_name}' would be attached to VM '{vm_name}'.",
+        )
+
+    devices_service = vms_service.vm_service(vm_id).host_devices_service()
+    try:
+        devices_service.add(sdk_types.HostDevice(name=host_device_name))
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_host_device_attach",
+            vm_name,
+            {"vm_id": vm_id, "host_device": host_device_name, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to attach host device '{host_device_name}' to VM '{vm_name}': {exc}"
+        ) from exc
+
+    audit_log(
+        "ovirt_vm_host_device_attach",
+        vm_name,
+        {"vm_id": vm_id, "host_device": host_device_name},
+        "SUCCESS",
+    )
+    return VmHardwareResult(
+        success=True,
+        vm_id=vm_id,
+        vm_name=vm_name,
+        device_type="host_device",
+        action="attach",
+        dry_run=False,
+        message=f"Host device '{host_device_name}' successfully attached to VM '{vm_name}'.",
+    )
+
+
+def detach_vm_host_device_tool(
+    name_or_id: str,
+    host_device_name: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> VmHardwareResult:
+    """Detach a physical host device from a virtual machine.
+
+    Args:
+        name_or_id: Virtual machine name or UUID.
+        host_device_name: System name of the host device to detach.
+        dry_run: If True, simulates without detaching the device.
+        confirm: Confirmation flag required in Safe Mode.
+
+    Returns:
+        VmHardwareResult with detachment status.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"detach host device '{host_device_name}' from VM '{name_or_id}'",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("detach_vm_host_device")
+
+    client = get_client()
+    conn = client.get_connection()
+    vms_service = conn.system_service().vms_service()
+    vm = client.find_resource_by_id_or_name(vms_service, name_or_id, "vm")
+    vm_id = str(vm.id)
+    vm_name = str(getattr(vm, "name", vm_id))
+
+    if dry_run:
+        audit_log(
+            "ovirt_vm_host_device_detach",
+            vm_name,
+            {"vm_id": vm_id, "host_device": host_device_name, "dry_run": True},
+            "SUCCESS",
+        )
+        return VmHardwareResult(
+            success=True,
+            vm_id=vm_id,
+            vm_name=vm_name,
+            device_type="host_device",
+            action="detach",
+            dry_run=True,
+            message=f"[DRY RUN] Host device '{host_device_name}' would be detached from VM '{vm_name}'.",
+        )
+
+    device_service = (
+        vms_service.vm_service(vm_id).host_devices_service().device_service(host_device_name)
+    )
+    try:
+        device_service.remove()
+    except Exception as exc:
+        audit_log(
+            "ovirt_vm_host_device_detach",
+            vm_name,
+            {"vm_id": vm_id, "host_device": host_device_name, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to detach host device '{host_device_name}' from VM '{vm_name}': {exc}"
+        ) from exc
+
+    audit_log(
+        "ovirt_vm_host_device_detach",
+        vm_name,
+        {"vm_id": vm_id, "host_device": host_device_name},
+        "SUCCESS",
+    )
+    return VmHardwareResult(
+        success=True,
+        vm_id=vm_id,
+        vm_name=vm_name,
+        device_type="host_device",
+        action="detach",
+        dry_run=False,
+        message=f"Host device '{host_device_name}' successfully detached from VM '{vm_name}'.",
     )

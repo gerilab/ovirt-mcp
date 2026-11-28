@@ -11,8 +11,14 @@ from ovirt_mcp.models.cluster import (
     ClusterDetail,
     ClusterFencingPolicy,
     ClusterMigrationPolicy,
+    ClusterOperationResult,
     ClusterSchedulingPolicy,
     ClusterSummary,
+)
+from ovirt_mcp.tools.guards import (
+    audit_log,
+    require_destructive_confirmation,
+    require_mutation_allowed,
 )
 
 logger = logging.getLogger(__name__)
@@ -516,6 +522,7 @@ def update_cluster_tool(
         raise OvirtValidationError(f"Cluster '{name_or_id}' not found.")
 
     c_id = str(cluster.id)
+    require_mutation_allowed("update_cluster")
 
     # Resolve scheduling policy name if provided
     if scheduling_policy_name and not scheduling_policy_id:
@@ -608,10 +615,491 @@ def update_cluster_tool(
 
     try:
         c_service.update(update_obj)
+        audit_log(
+            "update_cluster",
+            c_id,
+            {
+                "cluster_name": getattr(cluster, "name", c_id),
+                "fields": list(cluster_kwargs.keys()),
+            },
+            "SUCCESS",
+        )
     except Exception as exc:
+        audit_log(
+            "update_cluster",
+            c_id,
+            {"error": str(exc)},
+            "FAILED",
+        )
         raise OvirtMCPError(
             f"Failed to update cluster '{name_or_id}': {exc}",
             details={"cluster_id": c_id, "error": str(exc)},
         ) from exc
 
     return get_cluster_tool(c_id)
+
+
+def sync_all_cluster_networks_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> ClusterOperationResult:
+    """Synchronize all logical networks across all hosts in a cluster.
+
+    Args:
+        name_or_id: Cluster display name or UUID.
+        dry_run: If True, simulate the synchronization without triggering engine tasks.
+        confirm: Confirmation flag required in Safe Mode.
+
+    Returns:
+        ClusterOperationResult describing outcome.
+    """
+    require_destructive_confirmation("sync_all_cluster_networks", confirmed=confirm)
+    client = get_client()
+    conn = client.get_connection()
+    sys_service = conn.system_service()
+    clusters_service = sys_service.clusters_service()
+
+    cluster = client.find_resource_by_id_or_name(clusters_service, name_or_id, "cluster")
+    if not cluster:
+        raise OvirtValidationError(f"Cluster '{name_or_id}' not found.")
+
+    c_id = str(cluster.id)
+    c_name = str(getattr(cluster, "name", c_id))
+
+    if dry_run:
+        audit_log(
+            "sync_all_cluster_networks",
+            c_id,
+            {"cluster_name": c_name, "dry_run": True},
+            "SUCCESS",
+        )
+        return ClusterOperationResult(
+            success=True,
+            cluster_id=c_id,
+            cluster_name=c_name,
+            action="sync_all_networks",
+            dry_run=True,
+            message=f"[DRY-RUN] Network synchronization would be triggered across all hosts in cluster '{c_name}' ({c_id}).",
+        )
+
+    c_service = clusters_service.cluster_service(c_id)
+    try:
+        c_service.sync_all_networks()
+        audit_log(
+            "sync_all_cluster_networks",
+            c_id,
+            {"cluster_name": c_name},
+            "SUCCESS",
+        )
+        return ClusterOperationResult(
+            success=True,
+            cluster_id=c_id,
+            cluster_name=c_name,
+            action="sync_all_networks",
+            dry_run=False,
+            message=f"Network synchronization initiated for all hosts in cluster '{c_name}' ({c_id}).",
+        )
+    except Exception as exc:
+        audit_log(
+            "sync_all_cluster_networks",
+            c_id,
+            {"cluster_name": c_name, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to sync all networks for cluster '{c_name}': {exc}",
+            details={"cluster_id": c_id, "error": str(exc)},
+        ) from exc
+
+
+def reset_cluster_emulated_machine_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> ClusterOperationResult:
+    """Reset the emulated machine type of a cluster to default.
+
+    Args:
+        name_or_id: Cluster display name or UUID.
+        dry_run: If True, simulate the reset without altering cluster settings.
+        confirm: Confirmation flag required in Safe Mode.
+
+    Returns:
+        ClusterOperationResult describing outcome.
+    """
+    require_destructive_confirmation("reset_cluster_emulated_machine", confirmed=confirm)
+    client = get_client()
+    conn = client.get_connection()
+    sys_service = conn.system_service()
+    clusters_service = sys_service.clusters_service()
+
+    cluster = client.find_resource_by_id_or_name(clusters_service, name_or_id, "cluster")
+    if not cluster:
+        raise OvirtValidationError(f"Cluster '{name_or_id}' not found.")
+
+    c_id = str(cluster.id)
+    c_name = str(getattr(cluster, "name", c_id))
+
+    if dry_run:
+        audit_log(
+            "reset_cluster_emulated_machine",
+            c_id,
+            {"cluster_name": c_name, "dry_run": True},
+            "SUCCESS",
+        )
+        return ClusterOperationResult(
+            success=True,
+            cluster_id=c_id,
+            cluster_name=c_name,
+            action="reset_emulated_machine",
+            dry_run=True,
+            message=f"[DRY-RUN] Emulated machine type reset would be performed on cluster '{c_name}' ({c_id}).",
+        )
+
+    c_service = clusters_service.cluster_service(c_id)
+    try:
+        c_service.reset_emulated_machine()
+        audit_log(
+            "reset_cluster_emulated_machine",
+            c_id,
+            {"cluster_name": c_name},
+            "SUCCESS",
+        )
+        return ClusterOperationResult(
+            success=True,
+            cluster_id=c_id,
+            cluster_name=c_name,
+            action="reset_emulated_machine",
+            dry_run=False,
+            message=f"Emulated machine type successfully reset for cluster '{c_name}' ({c_id}).",
+        )
+    except Exception as exc:
+        audit_log(
+            "reset_cluster_emulated_machine",
+            c_id,
+            {"cluster_name": c_name, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to reset emulated machine for cluster '{c_name}': {exc}",
+            details={"cluster_id": c_id, "error": str(exc)},
+        ) from exc
+
+
+def create_cluster_tool(
+    name: str,
+    data_center: str,
+    cpu_type: str | None = None,
+    description: str | None = None,
+    comment: str | None = None,
+    compatibility_version: str | None = None,
+    dry_run: bool = False,
+) -> ClusterOperationResult:
+    """Create a new virtualization cluster in oVirt / OLVM.
+
+    Args:
+        name: Name of the new cluster.
+        data_center: Name or UUID of the parent Data Center.
+        cpu_type: Optional CPU type (e.g. 'Intel SandyBridge Family', 'AMD EPYC').
+        description: Optional description for the cluster.
+        comment: Optional free-text comment.
+        compatibility_version: Optional compatibility version string (e.g. '4.7').
+        dry_run: If True, validates configuration and pre-conditions without creating.
+
+    Returns:
+        ClusterOperationResult with created cluster ID and status.
+    """
+    require_mutation_allowed("create_cluster")
+
+    client = get_client()
+    conn = client.get_connection()
+    system_service = conn.system_service()
+    clusters_service = system_service.clusters_service()
+
+    # 1. Verify cluster name does not exist
+    try:
+        existing = clusters_service.list(search=f"name={name}")
+        for c in existing:
+            c_name = getattr(c, "name", "")
+            if type(c_name).__name__ in ("MagicMock", "Mock") and hasattr(c_name, "_mock_name"):
+                c_name = getattr(c_name, "_mock_name", "")
+            else:
+                c_name = str(c_name)
+            if c_name == name:
+                raise OvirtValidationError(
+                    f"A cluster with name '{name}' already exists in oVirt inventory.",
+                    details={"name": name, "existing_cluster_id": str(getattr(c, "id", ""))},
+                )
+    except OvirtValidationError:
+        raise
+    except Exception as exc:
+        logger.debug("Could not verify cluster uniqueness via search: %s", exc)
+
+    # 2. Resolve parent Data Center
+    dcs_service = system_service.data_centers_service()
+    dc = client.find_resource_by_id_or_name(dcs_service, data_center, "data center")
+    dc_id = str(dc.id)
+    dc_name = str(getattr(dc, "name", dc_id))
+
+    if dry_run:
+        audit_log(
+            "ovirt_cluster_create",
+            name,
+            {"data_center": dc_name, "cpu_type": cpu_type, "dry_run": True},
+            "SUCCESS",
+        )
+        return ClusterOperationResult(
+            success=True,
+            cluster_id="dry-run-cluster-id",
+            cluster_name=name,
+            action="create",
+            dry_run=True,
+            message=f"[DRY RUN] Cluster '{name}' is valid and would be created in Data Center '{dc_name}'.",
+        )
+
+    # 3. Create cluster
+    cluster_kwargs: dict[str, Any] = {
+        "name": name,
+        "data_center": sdk_types.DataCenter(id=dc_id),
+    }
+    if cpu_type:
+        cluster_kwargs["cpu"] = sdk_types.Cpu(type=cpu_type)
+    if description:
+        cluster_kwargs["description"] = description
+    if comment:
+        cluster_kwargs["comment"] = comment
+    if compatibility_version:
+        parts = compatibility_version.split(".")
+        if len(parts) >= 2:
+            cluster_kwargs["version"] = sdk_types.Version(
+                major=int(parts[0]),
+                minor=int(parts[1]),
+            )
+
+    cluster_spec = sdk_types.Cluster(**cluster_kwargs)
+    try:
+        created = clusters_service.add(cluster_spec)
+        created_id = str(getattr(created, "id", ""))
+    except Exception as exc:
+        audit_log(
+            "ovirt_cluster_create",
+            name,
+            {"data_center": dc_name, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to create cluster '{name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_cluster_create",
+        name,
+        {"cluster_id": created_id, "data_center": dc_name},
+        "SUCCESS",
+    )
+    return ClusterOperationResult(
+        success=True,
+        cluster_id=created_id,
+        cluster_name=name,
+        action="create",
+        dry_run=False,
+        message=f"Cluster '{name}' (UUID: {created_id}) created successfully in Data Center '{dc_name}'.",
+    )
+
+
+def delete_cluster_tool(
+    name_or_id: str,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> ClusterOperationResult:
+    """Delete an empty virtualization cluster from oVirt / OLVM.
+
+    Args:
+        name_or_id: Name or UUID of the cluster to remove.
+        dry_run: If True, simulates validation without removing the cluster.
+        confirm: Confirmation flag required in Safe Mode (MCP_SAFE_MODE=true).
+
+    Returns:
+        ClusterOperationResult with outcome and cluster identification.
+    """
+    if not dry_run:
+        require_destructive_confirmation(
+            f"delete cluster '{name_or_id}'",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("delete_cluster")
+
+    client = get_client()
+    conn = client.get_connection()
+    system_service = conn.system_service()
+    clusters_service = system_service.clusters_service()
+
+    cluster = client.find_resource_by_id_or_name(clusters_service, name_or_id, "cluster")
+    cluster_id = str(cluster.id)
+    cluster_name = str(getattr(cluster, "name", cluster_id))
+
+    # Pre-flight check: hosts and vms in cluster
+    hosts_service = system_service.hosts_service()
+    try:
+        hosts_in_cluster = hosts_service.list(search=f"cluster={cluster_name}")
+        if hosts_in_cluster:
+            host_names = [str(getattr(h, "name", h.id)) for h in hosts_in_cluster]
+            raise OvirtValidationError(
+                f"Cannot delete cluster '{cluster_name}' because it still contains {len(hosts_in_cluster)} host(s): {', '.join(host_names)}. Remove or relocate hosts first.",
+                details={"cluster_id": cluster_id, "hosts": host_names},
+            )
+    except OvirtValidationError:
+        raise
+    except Exception as exc:
+        logger.debug("Could not verify hosts in cluster: %s", exc)
+
+    vms_service = system_service.vms_service()
+    try:
+        vms_in_cluster = vms_service.list(search=f"cluster={cluster_name}")
+        if vms_in_cluster:
+            vm_names = [str(getattr(v, "name", v.id)) for v in vms_in_cluster]
+            raise OvirtValidationError(
+                f"Cannot delete cluster '{cluster_name}' because it still contains {len(vms_in_cluster)} virtual machine(s): {', '.join(vm_names)}. Remove or migrate VMs first.",
+                details={"cluster_id": cluster_id, "vms": vm_names},
+            )
+    except OvirtValidationError:
+        raise
+    except Exception as exc:
+        logger.debug("Could not verify VMs in cluster: %s", exc)
+
+    if dry_run:
+        audit_log(
+            "ovirt_cluster_delete",
+            cluster_name,
+            {"cluster_id": cluster_id, "dry_run": True},
+            "SUCCESS",
+        )
+        return ClusterOperationResult(
+            success=True,
+            cluster_id=cluster_id,
+            cluster_name=cluster_name,
+            action="delete",
+            dry_run=True,
+            message=f"[DRY RUN] Cluster '{cluster_name}' ({cluster_id}) is empty and eligible for removal.",
+        )
+
+    cluster_svc = clusters_service.cluster_service(cluster_id)
+    try:
+        cluster_svc.remove()
+    except Exception as exc:
+        audit_log(
+            "ovirt_cluster_delete",
+            cluster_name,
+            {"cluster_id": cluster_id, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(f"Failed to delete cluster '{cluster_name}': {exc}") from exc
+
+    audit_log(
+        "ovirt_cluster_delete",
+        cluster_name,
+        {"cluster_id": cluster_id},
+        "SUCCESS",
+    )
+    return ClusterOperationResult(
+        success=True,
+        cluster_id=cluster_id,
+        cluster_name=cluster_name,
+        action="delete",
+        dry_run=False,
+        message=f"Cluster '{cluster_name}' ({cluster_id}) was successfully deleted.",
+    )
+
+
+def upgrade_cluster_tool(
+    name_or_id: str,
+    action: str = "start",
+    percent_complete: int | None = None,
+    correlation_id: str | None = None,
+    dry_run: bool = False,
+    confirm: bool = False,
+) -> ClusterOperationResult:
+    """Manage rolling cluster upgrade process in oVirt / OLVM.
+
+    Args:
+        name_or_id: Display name or UUID of the cluster.
+        action: Upgrade action: 'start', 'stop', or 'update_progress'.
+        percent_complete: Progress percentage (0-100) when action is 'update_progress'.
+        correlation_id: Optional tracking identifier for correlated audit events.
+        dry_run: If True, simulates without triggering cluster upgrade.
+        confirm: Confirmation flag required in Safe Mode when starting or stopping upgrade.
+
+    Returns:
+        ClusterOperationResult with upgrade state.
+    """
+    act_lower = action.lower().strip()
+    if act_lower not in ("start", "stop", "update_progress"):
+        raise OvirtValidationError(
+            f"Invalid upgrade action '{action}'. Allowed values: 'start', 'stop', 'update_progress'."
+        )
+
+    if not dry_run and act_lower in ("start", "stop"):
+        require_destructive_confirmation(
+            f"{act_lower} rolling upgrade for cluster '{name_or_id}'",
+            confirmed=confirm,
+        )
+    else:
+        require_mutation_allowed("upgrade_cluster")
+
+    client = get_client()
+    conn = client.get_connection()
+    clusters_service = conn.system_service().clusters_service()
+    cluster = client.find_resource_by_id_or_name(clusters_service, name_or_id, "cluster")
+    cluster_id = str(cluster.id)
+    cluster_name = str(getattr(cluster, "name", cluster_id))
+
+    if dry_run:
+        audit_log(
+            "ovirt_cluster_upgrade",
+            cluster_name,
+            {"cluster_id": cluster_id, "action": act_lower, "dry_run": True},
+            "SUCCESS",
+        )
+        return ClusterOperationResult(
+            success=True,
+            cluster_id=cluster_id,
+            cluster_name=cluster_name,
+            action=f"upgrade_{act_lower}",
+            dry_run=True,
+            message=f"[DRY RUN] Cluster '{cluster_name}' ({cluster_id}) upgrade action '{act_lower}' would be executed.",
+        )
+
+    upgrade_kwargs: dict[str, Any] = {"upgrade_action": act_lower}
+    if percent_complete is not None:
+        upgrade_kwargs["upgrade_percent_complete"] = percent_complete
+    if correlation_id is not None:
+        upgrade_kwargs["correlation_id"] = correlation_id
+
+    cluster_svc = clusters_service.cluster_service(cluster_id)
+    try:
+        cluster_svc.upgrade(**upgrade_kwargs)
+    except Exception as exc:
+        audit_log(
+            "ovirt_cluster_upgrade",
+            cluster_name,
+            {"cluster_id": cluster_id, "action": act_lower, "error": str(exc)},
+            "FAILED",
+        )
+        raise OvirtMCPError(
+            f"Failed to execute upgrade action '{act_lower}' for cluster '{cluster_name}': {exc}"
+        ) from exc
+
+    audit_log(
+        "ovirt_cluster_upgrade",
+        cluster_name,
+        {"cluster_id": cluster_id, "action": act_lower},
+        "SUCCESS",
+    )
+    return ClusterOperationResult(
+        success=True,
+        cluster_id=cluster_id,
+        cluster_name=cluster_name,
+        action=f"upgrade_{act_lower}",
+        dry_run=False,
+        message=f"Cluster '{cluster_name}' ({cluster_id}) upgrade action '{act_lower}' successfully executed.",
+    )

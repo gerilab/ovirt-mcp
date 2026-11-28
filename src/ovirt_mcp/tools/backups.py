@@ -15,6 +15,7 @@ from ovirt_mcp.models.backup import (
 from ovirt_mcp.tools.guards import (
     audit_log,
     require_destructive_confirmation,
+    require_vm_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -294,6 +295,7 @@ def start_vm_backup_tool(
     vms_service = conn.system_service().vms_service()
     vm = client.find_resource_by_id_or_name(vms_service, vm_name_or_id, "vm")
     vm_name = str(getattr(vm, "name", vm.id))
+    require_vm_status(vm_name, getattr(vm, "status", None), ("up",), action_name="start_vm_backup")
 
     backup_kwargs: dict[str, Any] = {}
     if from_checkpoint_id:

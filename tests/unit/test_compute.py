@@ -186,7 +186,9 @@ def test_get_vm_console_ticket_vm_down() -> None:
     with patch("ovirt_mcp.tools.compute.get_client", return_value=mock_client):
         with pytest.raises(OvirtValidationError) as exc_info:
             get_vm_console_ticket_tool("test-vm")
-        assert "must be powered on" in str(exc_info.value)
+        assert "oVirt requires the VM to be in one of the following states: 'up'" in str(
+            exc_info.value
+        )
 
 
 def test_get_vm_console_ticket_success() -> None:
@@ -211,7 +213,9 @@ def test_get_vm_console_file_vm_down() -> None:
     with patch("ovirt_mcp.tools.compute.get_client", return_value=mock_client):
         with pytest.raises(OvirtValidationError) as exc_info:
             get_vm_console_file_tool("test-vm")
-        assert "must be powered on" in str(exc_info.value)
+        assert "oVirt requires the VM to be in one of the following states: 'up'" in str(
+            exc_info.value
+        )
 
 
 def test_get_vm_console_file_success() -> None:

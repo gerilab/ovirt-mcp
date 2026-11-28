@@ -5,6 +5,157 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.13] - 2026-11-28
+
+### Added
+- **Pre-flight Status Guards & Lifecycle State Machine Safety Across All 186 Tools**:
+  - Implemented centralized guard module `src/ovirt_mcp/tools/guards.py` providing `require_host_status`, `require_vm_status`, `require_storage_domain_status`, `require_disk_status`, `require_snapshot_status`, and `require_template_status`.
+  - Defined explicit transitional state blacklists (`TRANSITIONAL_HOST_STATUSES`, `TRANSITIONAL_VM_STATUSES`, `TRANSITIONAL_STORAGE_STATUSES`, `TRANSITIONAL_DISK_STATUSES`, `TRANSITIONAL_SNAPSHOT_STATUSES`, `TRANSITIONAL_TEMPLATE_STATUSES`) protecting against VDSM disconnects, storage lease corruptions, and engine race conditions during `saving_state`, `image_locked`, `preparing_for_maintenance`, `reboot`, and related in-flight operations.
+  - Standardized human- and AI-readable remediation guidance in `OvirtValidationError` specifying current status, required status list, and exact prerequisite remediation steps.
+  - Added comprehensive architectural documentation in `docs/STATUS_GUARDS.md` covering the WebAdmin vs REST API safety gap, Mermaid state machine diagrams, and troubleshooting matrix.
+- **Asynchronous Job Orchestration Best Practices**:
+  - Added documentation and patterns in `README.md` for handling background engine tasks (`ovirt_job_list`, `ovirt_job_get`) and async resource unlinking (e.g. Blank template and disk lock finalization).
+
+### Fixed
+- **Storage Domain Root Status Resolution**:
+  - Fixed `_extract_status_string` in `guards.py` to handle `status: None` returned by `/api/storagedomains/{id}` (where operational status is scoped to `/api/datacenters/{id}/storagedomains/{id}`), defaulting safely to `"active"`.
+- **vNIC Profile UUID Lookup**:
+  - Resolved SDK service method mapping mismatch in `connection.py` for `vnic_profile` lookups, delegating properly to `profile_service(id)`.
+- **Memory Snapshot & Console Safety**:
+  - Enforced strict live VM checks for memory snapshots (`persist_memory=True`) and console tickets/files (`ovirt_vm_ticket`, `ovirt_vm_console_file`), requiring `up` status.
+- **Offline Operations Enforcement**:
+  - Enforced strict `down` status requirement for `ovirt_template_create_from_vm`, `ovirt_vm_export`, `ovirt_vm_clone`, `ovirt_vm_snapshot_restore`, and `ovirt_vm_snapshot_preview`.
+
+### Changed
+- Promoted server safety model from Three-Tier to **Four-Tier Access, Safety & Lifecycle Architecture** (Tier 1: Engine AAA, Tier 2: Read-Only Gate, Tier 3: Safe Mode Confirmation, Tier 4: Pre-flight Status Guards).
+
+## [0.8.12] - 2026-11-27
+
+### Added
+- **Cloud-Init & Windows Sysprep Guest OS Customization**:
+  - `ovirt_vm_initialization_set`: Set, modify, or clear Cloud-Init (hostname, user, password, SSH authorized keys, custom user-data script, DNS, timezone, static NIC) and Windows Sysprep (domain, OU, admin password, license key, locale, UI language, custom answer script, static NIC) parameters.
+  - `ovirt_vm_initialization_get`: Query currently assigned Cloud-Init or Sysprep configuration from any virtual machine.
+  - Integrated guest initialization into `ovirt_vm_create` and Run-Once execution in `ovirt_vm_start`.
+- **14 New Enterprise Parity Tools (186 Tools Total)**:
+  - `ovirt_vm_snapshot_clone`: Clone a new independent virtual machine directly from an existing historical snapshot.
+  - `ovirt_disk_convert`: Convert virtual disk format between COW and RAW, with sparse preallocation options.
+  - `ovirt_disk_lun_refresh`: Refresh capacity and volume metadata for direct LUN disks.
+  - `ovirt_storage_domain_unregistered_vms_list`: List unregistered VMs on a storage domain (disaster recovery / import).
+  - `ovirt_storage_domain_unregistered_vm_register`: Register unregistered VMs into target clusters with MAC conflict resolution and partial disk import.
+  - `ovirt_host_copy_networks`: Copy logical network bindings and NIC configurations between hypervisor hosts.
+  - `ovirt_host_approve`: Approve pre-installed hypervisors with cluster assignment and automatic activation/reboot.
+  - `ovirt_cluster_upgrade`: Manage cluster rolling upgrades (`start`, `stop`, `update_progress`).
+  - `ovirt_vm_watchdog_list`: Inspect hardware watchdog devices attached to virtual machines.
+  - `ovirt_vm_watchdog_add`: Attach virtual hardware watchdogs (`i6300esb`, `diag288`) with customizable timeout actions (`reset`, `poweroff`, `pause`, `dump`, `none`).
+  - `ovirt_vm_watchdog_remove`: Detach hardware watchdogs with Safe Mode protection.
+  - `ovirt_vm_host_device_list`: Inspect physical host devices (SR-IOV, GPU, PCI passthrough) attached to VMs.
+  - `ovirt_vm_host_device_attach`: Attach host PCI/vGPU devices to virtual machines.
+  - `ovirt_vm_host_device_detach`: Detach physical host devices with Safe Mode protection.
+- **New Data Models**:
+  - `VmInitializationInfo`, `VmInitializationResult`, `VmNicConfiguration`, `VmWatchdogInfo`, `VmHostDeviceInfo`, `VmHardwareResult`.
+
+## [0.8.11] - 2026-11-27
+
+### Added
+- **11 New Full SDK Parity Tools (170 Tools Total)**:
+  - `ovirt_disk_get`: Retrieve comprehensive specifications, capacity metrics, format, storage domain hosting, and real-time I/O telemetry for virtual disks (`DiskDetail`).
+  - `ovirt_disk_delete`: Permanently delete virtual disks from storage domains with Safe Mode confirmation and dry_run simulation (`DiskDeleteResult`).
+  - `ovirt_vm_clone`: Clone virtual machines to create new independent VMs with target cluster, destination storage domain, snapshot collapsing, and synchronous wait (`VmCloneResult`).
+  - `ovirt_cluster_create`: Create virtualization clusters in target Data Centers specifying CPU types, descriptions, and compatibility versions (`ClusterOperationResult`).
+  - `ovirt_cluster_delete`: Delete empty virtualization clusters with active host and VM safety guards (`ClusterOperationResult`).
+  - `ovirt_datacenter_create`: Create Data Centers with shared or local storage architecture, quota mode, and compatibility levels (`DataCenterOperationResult`).
+  - `ovirt_datacenter_delete`: Delete Data Centers with cluster and storage domain safety guards and force removal support (`DataCenterOperationResult`).
+  - `ovirt_host_update`: Update hypervisor host comments, display names, and cluster relocation in maintenance mode (`HostDetail`).
+  - `ovirt_network_update`: Update logical network properties including names, descriptions, comments, 802.1Q VLAN IDs, and MTU sizes (`LogicalNetworkDetail`).
+  - `ovirt_template_update`: Update virtual machine template names, descriptions, and comments (`TemplateDetail`).
+  - `ovirt_storage_domain_update`: Update Storage Domain attributes including names, comments, and warning/critical space threshold limits (`StorageDomainDetail`).
+- **Updated Result Models**:
+  - `DiskDeleteResult` in `ovirt_mcp.models.disk`
+  - `VmCloneResult` in `ovirt_mcp.models.vm`
+- **Updated Service Action Parity Coverage**:
+  - `VmService`: 73.1% (19/26 methods mapped)
+  - `HostService`: 80.0% (16/20 methods mapped)
+  - `StorageDomainService`: 83.3% (5/6 methods mapped)
+  - `ClusterService`: 66.7% (4/6 methods mapped)
+  - `DiskService`: 66.7% (6/9 methods mapped)
+  - `TemplateService`: 60.0% (3/5 methods mapped)
+  - `DataCenterService`: 50.0% (2/4 methods mapped)
+  - `NetworkService`: 100.0% (2/2 methods mapped)
+  - `VmPoolService`: 100.0% (3/3 methods mapped)
+
+## [0.8.10] - 2026-11-27
+
+### Added
+- **15 New Enterprise Operational Parity Tools (159 Tools Total)**:
+  - `ovirt_vm_freeze_filesystems`: Freeze (quiesce) guest filesystems via `qemu-guest-agent` for storage-level snapshots/backups.
+  - `ovirt_vm_thaw_filesystems`: Thaw (unquiesce) guest filesystems after snapshot/backup completion.
+  - `ovirt_vm_auto_pin`: Apply automated CPU and NUMA node pinning topology to virtual machines.
+  - `ovirt_host_create`: Add, provision, and enroll a new hypervisor host into a cluster via automated Ansible host deployment (`ovirt-host-deploy`).
+  - `ovirt_host_delete`: Permanently remove and decommission a hypervisor host from engine inventory with pre-flight maintenance mode verification, SPM detection, active VM protection, Safe Mode confirmation, and dry_run simulation.
+  - `ovirt_host_enroll_certificate`: Enroll / renew host PKI TLS certificates with the internal engine CA.
+  - `ovirt_host_sync_all_networks`: Synchronize all out-of-sync networks on a hypervisor host.
+  - `ovirt_host_commit_net_config`: Persist running network configuration to permanent host storage.
+  - `ovirt_storage_domain_refresh_luns`: Rescan and refresh SAN/iSCSI LUN sizes and visibility on block storage domains.
+  - `ovirt_storage_domain_reduce_luns`: Release and reduce unused LUN physical volumes from block storage domains.
+  - `ovirt_disk_reduce`: Shrink/reduce underlying physical storage volume allocation for thin-provisioned virtual disks.
+  - `ovirt_cluster_sync_all_networks`: Synchronize logical networks across all hypervisor hosts in a cluster.
+  - `ovirt_cluster_reset_emulated_machine`: Reset cluster default emulated machine type.
+  - `ovirt_datacenter_clean_finished_tasks`: Clean finished asynchronous background tasks in a Data Center.
+  - `ovirt_template_export`: Export templates to Export Storage Domains.
+- **Service Action Parity Coverage Increases**:
+  - `VmService`: 69.2% (18/26 methods mapped)
+  - `HostService`: 75.0% (15/20 methods mapped)
+  - `StorageDomainService`: 66.7% (4/6 methods mapped)
+  - `ClusterService`: 50.0% (3/6 methods mapped)
+  - `DiskService`: 66.7% (6/9 methods mapped)
+  - `TemplateService`: 40.0% (2/5 methods mapped)
+  - `DataCenterService`: 25.0% (1/4 methods mapped)
+  - `VmPoolService`: 100.0% (3/3 methods mapped)
+- **New Result Models**:
+  - `HostCreateResult` in `ovirt_mcp.models.host`
+  - `HostDeleteResult` in `ovirt_mcp.models.host`
+  - `ClusterOperationResult` in `ovirt_mcp.models.cluster`
+  - `DataCenterOperationResult` in `ovirt_mcp.models.datacenter`
+  - Added `dry_run` support to `StorageDomainResult`.
+
+## [0.8.9] - 2026-11-27
+
+### Added
+- **SDK Parity & Coverage Audit Engine (`ovirt-mcp --audit`)**:
+  - Implemented automated introspection engine in `scripts/audit_sdk_coverage.py` comparing official `ovirtsdk4` types and services against `ovirt-mcp` models and tools.
+  - Generates comprehensive living parity matrix in `SDK_COVERAGE.md`.
+  - Accessible directly via CLI: `ovirt-mcp --audit` or `ovirt-mcp audit`.
+  - Increased overall SDK property coverage across core resources from 30.6% to 37.6% (163/434 properties).
+- **6 New Enterprise Virtualization Operational Tools (144 Tools Total)**:
+  - `ovirt_vm_cancel_migration`: Cancel in-progress live migration of a virtual machine with Safe Mode and `dry_run` support.
+  - `ovirt_vm_suspend`: Suspend a running virtual machine to disk (saving RAM/state to hypervisor storage).
+  - `ovirt_vm_reset`: Hard hardware reset of VM (simulating physical chassis reset button).
+  - `ovirt_host_refresh`: Refresh host capabilities, NUMA topology, network adapters, and devices from VDSM agent.
+  - `ovirt_host_force_select_spm`: Force hypervisor host selection as Storage Pool Manager (SPM).
+  - `ovirt_storage_domain_update_ovf_store`: Trigger immediate synchronization and generation of the OVF store backup on storage domains.
+- **Deep SDK Telemetry & Metadata Field Mapping**:
+  - `VmSummary` & `VmDetail`: Exposed `delete_protected`, `has_illegal_images`, `next_run_configuration_exists`, `creation_time`, `start_time`, `stop_time`, `stop_reason`, `comment`, `origin`, `stateless`, `type`, and `status_detail`.
+  - `HostSummary` & `HostDetail`: Exposed `comment`, `description`, `kdump_status`, `auto_numa_status`, `se_linux`, `hosted_engine`, `transparent_huge_pages`, `type`, `protocol`, and `numa_supported`.
+  - `DiskDetail`: Exposed `backup`, `backup_mode`, `shareable`, `read_only`, `wipe_after_delete`, `sparse`, `qcow_version`, `sgio`, `propagate_errors`, `description`, and `comment`.
+  - `StorageDomainDetail`: Exposed `comment`, `block_size`, `discard_after_delete`, `external_status`, `backup`, and `master`.
+
+## [0.8.8] - 2026-11-27
+
+### Added
+- **Hypervisor Host Reinstallation Tool (`ovirt_host_reinstall`)**:
+  - Added new tool #49 (`ovirt_host_reinstall`) executing the oVirt / OLVM Ansible deployment automation playbook (`ovirt-host-deploy`).
+  - Reinstalls and syncs the VDSM node agent, PKI TLS certificates, management network bridges, and firewall rules on hypervisor hosts.
+  - Implemented multi-layered safety guards:
+    - Pre-flight guard strictly blocks execution on active hosts with running VMs (`status=up`) to protect tenant workloads; host must be in `maintenance`, `non_operational`, `install_failed`, or `down` state.
+    - Protected action in Safe Mode: requires `confirm=True` when `MCP_SAFE_MODE=true`.
+    - Simulation mode: supports `dry_run=True` to validate pre-conditions, status constraints, and engine reachability without altering host state.
+    - Read-only protection: rejects execution when `MCP_READ_ONLY=true`.
+    - Configurable post-install actions: `activate: bool = True` (auto-activate to 'up'), `reboot: bool = True` (reboot physical node), `root_password: str | None` (optional SSH credential).
+- **Host Reinstallation & Health Status Exposure (`ovirt_host_list`, `ovirt_host_get`)**:
+  - Exposed native oVirt SDK `reinstallation_required` boolean flag in `HostSummary` and `HostDetail` data models.
+  - Exposed `status_detail` string providing the engine's detailed reason for degraded or non-operational status.
+  - Exposed `external_status` health indicator (`ok`, `info`, `warning`, `error`).
+
 ## [0.8.7] - 2026-11-25
 
 ### Added

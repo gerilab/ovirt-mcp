@@ -51,7 +51,7 @@ class TemplateResult(BaseModel):
     success: bool = Field(description="Whether the operation succeeded")
     template_id: str = Field(description="UUID of the affected template")
     template_name: str = Field(description="Name of the affected template")
-    action: str = Field(description="Action executed: 'create' or 'delete'")
+    action: str = Field(description="Action executed: 'create', 'delete', or 'export'")
     dry_run: bool = Field(
         default=False,
         description="Whether this action was simulated in dry_run mode without execution",

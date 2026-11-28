@@ -15,6 +15,7 @@ from .exceptions import (
     NotFoundError,
     OvirtAuthError,
     OvirtConnectionError,
+    OvirtValidationError,
 )
 
 logger = logging.getLogger(__name__)
@@ -239,6 +240,10 @@ class OvirtClient:
             single_service_fn = getattr(service, "pool_service", None) or getattr(
                 service, "vm_pool_service", None
             )
+        if single_service_fn is None and resource_type_name in ("vnic_profile", "vnic profile", "profile"):
+            single_service_fn = getattr(service, "profile_service", None) or getattr(
+                service, "vnic_profile_service", None
+            )
         if single_service_fn:
             try:
                 item_service = single_service_fn(identifier)
@@ -252,6 +257,15 @@ class OvirtClient:
         # 2. Try searching by name
         clean_name = identifier.replace("'", "").replace('"', "")
         if hasattr(service, "list"):
+            matching_items: list[Any] = []
+            seen_ids: set[str] = set()
+
+            def _add_match(item: Any) -> None:
+                i_id = str(getattr(item, "id", id(item)))
+                if i_id not in seen_ids:
+                    seen_ids.add(i_id)
+                    matching_items.append(item)
+
             try:
                 results = service.list(search=f"name={clean_name}")
                 if results:
@@ -259,7 +273,7 @@ class OvirtClient:
                         if getattr(r, "name", None) in (identifier, clean_name) or getattr(
                             r, "user_name", None
                         ) in (identifier, clean_name):
-                            return r
+                            _add_match(r)
             except Exception as exc:
                 logger.debug(
                     "Search by name '%s' on %s failed: %s",
@@ -269,16 +283,33 @@ class OvirtClient:
                 )
 
             # Fallback: exact in-memory match over all items if search query is unsupported or ignored
-            try:
-                all_items = service.list()
-                if all_items:
-                    for item in all_items:
-                        if getattr(item, "name", None) in (identifier, clean_name) or getattr(
-                            item, "user_name", None
-                        ) in (identifier, clean_name):
-                            return item
-            except Exception:
-                pass
+            if not matching_items:
+                try:
+                    all_items = service.list()
+                    if all_items:
+                        for item in all_items:
+                            if getattr(item, "name", None) in (identifier, clean_name) or getattr(
+                                item, "user_name", None
+                            ) in (identifier, clean_name):
+                                _add_match(item)
+                except Exception:
+                    pass
+
+            if len(matching_items) == 1:
+                return matching_items[0]
+            if len(matching_items) > 1:
+                matching_ids = [str(getattr(m, "id", "unknown")) for m in matching_items]
+                raise OvirtValidationError(
+                    f"Ambiguous {resource_type_name} identifier '{identifier}': found {len(matching_items)} "
+                    f"resources sharing this identical name (UUIDs: {', '.join(matching_ids)}). "
+                    f"To prevent accidental operations on the wrong resource, please specify the exact UUID.",
+                    details={
+                        "identifier": identifier,
+                        "resource_type": resource_type_name,
+                        "matching_count": len(matching_items),
+                        "matching_ids": matching_ids,
+                    },
+                )
 
         raise NotFoundError(resource_type_name, identifier)
 
